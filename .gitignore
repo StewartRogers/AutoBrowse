@@ -43,3 +43,8 @@ coverage/
 # local public uploads / user data
 /public/uploads/
 
+
+# SQLite database
+garage.db
+garage.db-shm
+garage.db-wal
