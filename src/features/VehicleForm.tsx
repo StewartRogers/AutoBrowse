@@ -28,6 +28,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [aiError, setAiError] = useState('');
+  const [photoBlocked, setPhotoBlocked] = useState(false);
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
   const setPricing = (patch: Partial<Vehicle['pricing']>) => setV(prev => ({ ...prev, pricing: { ...prev.pricing, ...patch } }));
@@ -158,38 +159,34 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
         {/* Photo preview — shown after AI Fill captures a photoUrl */}
         {v.photoUrl && (
           <Field label="Photo">
-            <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)' }}>
-              <img
-                src={v.photoUrl}
-                alt="Vehicle"
-                style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }}
-                onError={e => {
-                  const el = e.currentTarget;
-                  el.style.display = 'none';
-                  const msg = el.nextElementSibling as HTMLElement | null;
-                  if (msg) msg.style.display = 'flex';
-                }}
-              />
-              <div style={{
-                display: 'none', alignItems: 'center', justifyContent: 'center',
-                padding: '12px 16px', fontSize: 12, color: 'var(--ink-muted, #888)', gap: 6,
-              }}>
-                ⚠️ Photo URL captured but image blocked by the source site.{' '}
-                <a href={v.photoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>
-                  Open in new tab
-                </a>
-              </div>
+            <div style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)', minHeight: 48 }}>
+              {!photoBlocked ? (
+                <img
+                  key={v.photoUrl}
+                  src={v.photoUrl}
+                  alt="Vehicle"
+                  style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }}
+                  onError={() => setPhotoBlocked(true)}
+                />
+              ) : (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', fontSize: 12, color: 'var(--ink-muted, #888)' }}>
+                  ⚠️ Image blocked by source site —{' '}
+                  <a href={v.photoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>
+                    open in new tab
+                  </a>{' '}to copy a working URL.
+                </div>
+              )}
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
               <input
                 className="input"
                 type="url"
                 value={v.photoUrl}
-                onChange={e => set({ photoUrl: e.target.value })}
+                onChange={e => { set({ photoUrl: e.target.value }); setPhotoBlocked(false); }}
                 placeholder="https://..."
                 style={{ flex: 1, fontSize: 12 }}
               />
-              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => set({ photoUrl: '' })}>Clear</button>
+              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { set({ photoUrl: '' }); setPhotoBlocked(false); }}>Clear</button>
             </div>
           </Field>
         )}

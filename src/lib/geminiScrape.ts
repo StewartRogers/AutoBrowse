@@ -188,7 +188,27 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
 
     return { ok: true, data };
   } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return { ok: false, error: msg };
+    const raw = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: friendlyError(raw) };
   }
+}
+
+function friendlyError(raw: string): string {
+  // Parse Gemini API error JSON embedded in the message
+  try {
+    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      const code   = parsed?.error?.code;
+      const status = parsed?.error?.status;
+      if (code === 429 || status === 'RESOURCE_EXHAUSTED') {
+        return 'Rate limit reached — you\'ve hit your Gemini API quota. Wait a minute then try again, or check your plan at ai.dev/rate-limit.';
+      }
+      if (code === 400) return `Bad request: ${parsed?.error?.message ?? raw}`;
+      if (code === 401 || code === 403) return 'API key rejected. Check VITE_GEMINI_API_KEY in your .env file.';
+      if (code === 404) return `Model not found — check VITE_GEMINI_MODEL in your .env. Raw: ${parsed?.error?.message ?? raw}`;
+      if (parsed?.error?.message) return parsed.error.message;
+    }
+  } catch { /* fall through */ }
+  return raw;
 }
