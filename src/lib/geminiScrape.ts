@@ -102,7 +102,7 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
       model,
       contents: `${EXTRACT_PROMPT}\n\nURL: ${url}`,
       config: {
-        tools: [{ urlContext: {} }],
+        tools: [{ urlContext: {} }, { googleSearch: {} }],
         temperature: 0,
       },
     });
@@ -182,6 +182,33 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
       if (s.legroomFront)  data.specs.legroomFront  = Number(s.legroomFront);
       if (s.legroomRear)   data.specs.legroomRear   = Number(s.legroomRear);
       if (s.groundClear)   data.specs.groundClear   = Number(s.groundClear);
+    }
+
+    // Client-side metric safety net: if values look like they're in metric, convert.
+    // EV range: anything > 350 is almost certainly km (no production EV does 350+ miles)
+    if (data.specs?.evRange && data.specs.evRange > 350) {
+      data.specs.evRange = Math.round(data.specs.evRange / 1.609);
+    }
+    // Dimensions: if lengthIn > 250 it's almost certainly mm, not inches
+    if (data.specs?.lengthIn && data.specs.lengthIn > 250) {
+      data.specs.lengthIn = Math.round(data.specs.lengthIn / 25.4);
+    }
+    if (data.specs?.legroomFront && data.specs.legroomFront > 60) {
+      data.specs.legroomFront = Math.round((data.specs.legroomFront / 25.4) * 10) / 10;
+    }
+    if (data.specs?.legroomRear && data.specs.legroomRear > 60) {
+      data.specs.legroomRear = Math.round((data.specs.legroomRear / 25.4) * 10) / 10;
+    }
+    if (data.specs?.groundClear && data.specs.groundClear > 30) {
+      data.specs.groundClear = Math.round((data.specs.groundClear / 25.4) * 10) / 10;
+    }
+    // Torque: if > 800 it's almost certainly Nm (no common vehicle exceeds 800 lb-ft)
+    if (data.specs?.torque && data.specs.torque > 800) {
+      data.specs.torque = Math.round(data.specs.torque * 0.7376);
+    }
+    // Cargo: if cargoCuFt > 150 it's almost certainly litres
+    if (data.specs?.cargoCuFt && data.specs.cargoCuFt > 150) {
+      data.specs.cargoCuFt = Math.round(data.specs.cargoCuFt * 0.0353 * 10) / 10;
     }
 
     return { ok: true, data };

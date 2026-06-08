@@ -155,6 +155,45 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           )}
         </Field>
 
+        {/* Photo preview — shown after AI Fill captures a photoUrl */}
+        {v.photoUrl && (
+          <Field label="Photo">
+            <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)' }}>
+              <img
+                src={v.photoUrl}
+                alt="Vehicle"
+                style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }}
+                onError={e => {
+                  const el = e.currentTarget;
+                  el.style.display = 'none';
+                  const msg = el.nextElementSibling as HTMLElement | null;
+                  if (msg) msg.style.display = 'flex';
+                }}
+              />
+              <div style={{
+                display: 'none', alignItems: 'center', justifyContent: 'center',
+                padding: '12px 16px', fontSize: 12, color: 'var(--ink-muted, #888)', gap: 6,
+              }}>
+                ⚠️ Photo URL captured but image blocked by the source site.{' '}
+                <a href={v.photoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>
+                  Open in new tab
+                </a>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+              <input
+                className="input"
+                type="url"
+                value={v.photoUrl}
+                onChange={e => set({ photoUrl: e.target.value })}
+                placeholder="https://..."
+                style={{ flex: 1, fontSize: 12 }}
+              />
+              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => set({ photoUrl: '' })}>Clear</button>
+            </div>
+          </Field>
+        )}
+
         {/* Accent color */}
         <Field label="Accent Color">
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
