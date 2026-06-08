@@ -119,6 +119,7 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
         )}
         <div onClick={onClick} style={{ cursor: 'pointer' }}>
           <PhotoSlot
+            photoUrl={v.photoUrl || undefined}
             color={v.color || undefined}
             accent={v.accent}
             height={140}
