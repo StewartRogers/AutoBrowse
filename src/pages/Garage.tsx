@@ -31,7 +31,7 @@ const PT_OPTS = [
   { value: 'ev' as PtFilter, label: 'Electric' },
 ];
 
-interface CardMenuProps {
+interface CardActionsProps {
   v: Vehicle;
   onEdit: () => void;
   onDuplicate: () => void;
@@ -40,43 +40,54 @@ interface CardMenuProps {
   onDelete: () => void;
 }
 
-function CardMenu({ v, onEdit, onDuplicate, onExclude, onRestore, onDelete }: CardMenuProps) {
-  const [open, setOpen] = useState(false);
+function CardActions({ v, onEdit, onDuplicate, onExclude, onRestore, onDelete }: CardActionsProps) {
+  const [confirming, setConfirming] = useState(false);
+
+  if (confirming) {
+    return (
+      <div className={styles.deleteConfirm}>
+        <span className={styles.deleteConfirmLabel}>Delete permanently?</span>
+        <button
+          className={`btn ${styles.iconBtn}`}
+          title="Cancel"
+          onClick={() => setConfirming(false)}
+        >
+          <Icon name="x" size={14} />
+        </button>
+        <button
+          className={`btn ${styles.iconBtnDanger}`}
+          title="Confirm delete"
+          onClick={onDelete}
+        >
+          <Icon name="trash" size={14} /> Yes, delete
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div className={styles.menuWrap}>
-      <button className="btn btn-ghost" style={{ padding: '4px 6px' }} onClick={() => setOpen(o => !o)}>
-        <Icon name="more-horizontal" size={16} />
+    <div className={styles.iconBar}>
+      <button className={`btn ${styles.iconBtn}`} title="Edit details" onClick={onEdit}>
+        <Icon name="edit" size={14} />
       </button>
-      {open && (
-        <>
-          <div className={styles.menuOverlay} onClick={() => setOpen(false)} />
-          <div className={styles.menu}>
-            <button className={styles.menuItem} onClick={() => { onEdit(); setOpen(false); }}>
-              <Icon name="edit" size={14} /> Edit details
-            </button>
-            <button className={styles.menuItem} onClick={() => { onDuplicate(); setOpen(false); }}>
-              <Icon name="copy" size={14} /> Duplicate
-            </button>
-            {v.archived
-              ? <button className={styles.menuItem} onClick={() => { onRestore(); setOpen(false); }}>
-                  <Icon name="restore" size={14} /> Restore
-                </button>
-              : <button className={styles.menuItem} onClick={() => { onExclude(); setOpen(false); }}>
-                  <Icon name="archive" size={14} /> Exclude
-                </button>
-            }
-            <div className="divider" style={{ margin: '4px 0' }} />
-            <button className={`${styles.menuItem} ${styles.menuDanger}`} onClick={() => {
-              if (window.confirm(`Delete ${v.year} ${v.make} ${v.model}? This cannot be undone.`)) {
-                onDelete();
-              }
-              setOpen(false);
-            }}>
-              <Icon name="trash" size={14} /> Delete
-            </button>
-          </div>
-        </>
-      )}
+      <button className={`btn ${styles.iconBtn}`} title="Duplicate" onClick={onDuplicate}>
+        <Icon name="copy" size={14} />
+      </button>
+      {v.archived
+        ? <button className={`btn ${styles.iconBtn}`} title="Restore" onClick={onRestore}>
+            <Icon name="restore" size={14} />
+          </button>
+        : <button className={`btn ${styles.iconBtn}`} title="Exclude (keep hidden)" onClick={onExclude}>
+            <Icon name="archive" size={14} />
+          </button>
+      }
+      <button
+        className={`btn ${styles.iconBtn} ${styles.iconBtnDangerSoft}`}
+        title="Delete"
+        onClick={() => setConfirming(true)}
+      >
+        <Icon name="trash" size={14} />
+      </button>
     </div>
   );
 }
@@ -135,19 +146,9 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
       {/* Body */}
       <div className={styles.body}>
         <div className={styles.eyebrow}>{v.year} · {v.bodyStyle}</div>
-        <div className={styles.titleRow}>
-          <h3 className={`${styles.name} truncate`} onClick={onClick} style={{ cursor: 'pointer' }}>
-            {v.make} {v.model}
-          </h3>
-          <CardMenu
-            v={v}
-            onEdit={onEdit}
-            onDuplicate={onDuplicate}
-            onExclude={onExclude}
-            onRestore={onRestore}
-            onDelete={onDelete}
-          />
-        </div>
+        <h3 className={`${styles.name} truncate`} onClick={onClick} style={{ cursor: 'pointer' }}>
+          {v.make} {v.model}
+        </h3>
         <div className={styles.trim}>{v.trim}</div>
 
         {!v.archived ? (
@@ -191,16 +192,21 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
             {v.excludeReason && (
               <div className={styles.excludeReason}>Set aside: {v.excludeReason}</div>
             )}
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button className="btn btn-secondary" style={{ flex: 1, justifyContent: 'center' }} onClick={onRestore}>
-                <Icon name="restore" size={13} /> Restore
-              </button>
-              <button className="btn btn-ghost" style={{ flex: 1, justifyContent: 'center' }} onClick={onClick}>
-                Open
-              </button>
-            </div>
+            <button className="btn btn-secondary" style={{ width: '100%', justifyContent: 'center' }} onClick={onClick}>
+              Open workbook →
+            </button>
           </div>
         )}
+
+        {/* Action icon bar — always visible at bottom of card */}
+        <CardActions
+          v={v}
+          onEdit={onEdit}
+          onDuplicate={onDuplicate}
+          onExclude={onExclude}
+          onRestore={onRestore}
+          onDelete={onDelete}
+        />
       </div>
     </div>
   );

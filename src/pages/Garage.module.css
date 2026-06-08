@@ -146,36 +146,70 @@
   font-style: italic;
 }
 
-/* Overflow menu */
-.menuWrap { position: relative; }
-.menuOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-}
-.menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  z-index: 60;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  box-shadow: var(--shadow-lg);
-  min-width: 160px;
-  padding: 4px;
-}
-.menuItem {
+/* Icon action bar */
+.iconBar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 4px;
-  font-size: 13px;
-  color: var(--ink-soft);
-  transition: all .1s;
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-soft);
 }
-.menuItem:hover { background: var(--paper-2); color: var(--ink); }
-.menuDanger { color: var(--bad) !important; }
-.menuDanger:hover { background: #fdf0ee !important; }
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  border: 1px solid transparent;
+  transition: all .12s;
+}
+.iconBtn:hover {
+  background: var(--paper-2);
+  border-color: var(--line);
+  color: var(--ink);
+}
+
+.iconBtnDangerSoft { margin-left: auto; }
+.iconBtnDangerSoft:hover {
+  background: #fdf0ee !important;
+  border-color: var(--bad) !important;
+  color: var(--bad) !important;
+}
+
+/* Inline delete confirmation */
+.deleteConfirm {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--line-soft);
+  background: #fdf0ee;
+  border-radius: var(--r-sm);
+}
+.deleteConfirmLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bad);
+  flex: 1;
+}
+.iconBtnDanger {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  height: 28px;
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--bad);
+  color: #fff;
+  border: none;
+  transition: opacity .12s;
+}
+.iconBtnDanger:hover { opacity: .85; }
