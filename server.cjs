@@ -1,8 +1,113 @@
 const express = require('express');
+const Database = require('better-sqlite3');
+const path = require('path');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
+
+// ─── Database ──────────────────────────────────────────────────────────────
+
+const DB_PATH = path.join(__dirname, 'garage.db');
+const db = new Database(DB_PATH);
+
+// Enable WAL mode for better concurrent read performance
+db.pragma('journal_mode = WAL');
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vehicles (
+    id         TEXT    PRIMARY KEY,
+    data       TEXT    NOT NULL,
+    updated_at INTEGER NOT NULL DEFAULT (unixepoch())
+  );
+
+  CREATE TABLE IF NOT EXISTS matrix (
+    id   INTEGER PRIMARY KEY CHECK (id = 1),
+    data TEXT    NOT NULL
+  );
+`);
+
+const stmt = {
+  allVehicles:   db.prepare("SELECT data FROM vehicles ORDER BY json_extract(data, '$.createdAt') DESC"),
+  upsertVehicle: db.prepare('INSERT OR REPLACE INTO vehicles (id, data, updated_at) VALUES (?, ?, unixepoch())'),
+  deleteVehicle: db.prepare('DELETE FROM vehicles WHERE id = ?'),
+  countVehicles: db.prepare('SELECT COUNT(*) AS n FROM vehicles'),
+  getMatrix:     db.prepare('SELECT data FROM matrix WHERE id = 1'),
+  upsertMatrix:  db.prepare('INSERT OR REPLACE INTO matrix (id, data) VALUES (1, ?)'),
+};
+
+console.log(`Database: ${DB_PATH}`);
+
+// ─── Vehicle endpoints ──────────────────────────────────────────────────────
+
+// GET /api/vehicles — return all vehicles ordered by createdAt desc
+app.get('/api/vehicles', (req, res) => {
+  try {
+    const rows = stmt.allVehicles.all();
+    res.json({ ok: true, vehicles: rows.map(r => JSON.parse(r.data)) });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// POST /api/vehicles — create a vehicle (body = full Vehicle object)
+app.post('/api/vehicles', (req, res) => {
+  try {
+    const v = req.body;
+    if (!v?.id) return res.status(400).json({ ok: false, error: 'Missing id.' });
+    stmt.upsertVehicle.run(v.id, JSON.stringify(v));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// PUT /api/vehicles/:id — replace a vehicle (body = full Vehicle object)
+app.put('/api/vehicles/:id', (req, res) => {
+  try {
+    const v = { ...req.body, id: req.params.id };
+    stmt.upsertVehicle.run(req.params.id, JSON.stringify(v));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// DELETE /api/vehicles/:id — permanently remove a vehicle
+app.delete('/api/vehicles/:id', (req, res) => {
+  try {
+    stmt.deleteVehicle.run(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// ─── Matrix endpoints ───────────────────────────────────────────────────────
+
+// GET /api/matrix
+app.get('/api/matrix', (req, res) => {
+  try {
+    const row = stmt.getMatrix.get();
+    res.json({ ok: true, matrix: row ? JSON.parse(row.data) : null });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// PUT /api/matrix — replace the full matrix factors array
+app.put('/api/matrix', (req, res) => {
+  try {
+    if (!Array.isArray(req.body)) return res.status(400).json({ ok: false, error: 'Body must be an array.' });
+    stmt.upsertMatrix.run(JSON.stringify(req.body));
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: String(err.message) });
+  }
+});
+
+// ─── HTML scrape endpoint ───────────────────────────────────────────────────
 
 function extractMeta(html, name) {
   const patterns = [
@@ -86,8 +191,10 @@ app.get('/api/scrape-html', async (req, res) => {
   }
 });
 
+// ─── Root ───────────────────────────────────────────────────────────────────
+
 app.get('/', (req, res) => {
-  res.json({ message: 'AutoBrowse API' });
+  res.json({ message: 'AutoBrowse API', db: DB_PATH });
 });
 
 app.listen(PORT, () => {

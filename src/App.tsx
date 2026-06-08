@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import { useStore } from './store/useStore';
 import AppShell from './layouts/AppShell';
@@ -11,7 +11,9 @@ import VehicleForm from './features/VehicleForm';
 import type { Vehicle } from './lib/data';
 
 export default function App() {
-  const { addVehicle, replaceVehicle } = useStore();
+  const { addVehicle, replaceVehicle, init, hydrated } = useStore();
+
+  useEffect(() => { init(); }, [init]);
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<Vehicle | null>(null);
 
@@ -27,6 +29,15 @@ export default function App() {
     }
     closeForm();
   };
+
+  if (!hydrated) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, color: 'var(--ink-soft)', fontFamily: 'var(--sans)' }}>
+        <div style={{ fontSize: 28 }}>🚗</div>
+        <div style={{ fontSize: 14 }}>Loading garage…</div>
+      </div>
+    );
+  }
 
   return (
     <>
