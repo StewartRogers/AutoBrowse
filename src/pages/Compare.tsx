@@ -194,7 +194,7 @@ export default function Compare() {
 
   // Ranked / sorted vehicles
   const vehicles = useMemo(() => {
-    const base = compareIds
+    let base = compareIds
       .map(id => allVehicles.find(v => v.id === id && !v.archived))
       .filter((v): v is Vehicle => !!v);
 
@@ -206,7 +206,9 @@ export default function Compare() {
         case 'lease': return leaseCalc(a).monthly - leaseCalc(b).monthly;
         case 'ownership': return ownershipCalc(a).y5 - ownershipCalc(b).y5;
         case 'economy': {
-          const eco = (v: Vehicle) => v.powertrain === 'ev' ? (v.specs.mpge || 0) : (v.specs.mpgCombined || 0);
+          const eco = (v: Vehicle) => v.powertrain === 'ev'
+            ? (v.specs.mpge ? 1 / v.specs.mpge : 0)
+            : (v.specs.fuelL100km ? 1 / v.specs.fuelL100km : 0);
           return eco(b) - eco(a);
         }
         case 'rating': {
@@ -224,11 +226,7 @@ export default function Compare() {
   const toggleSection = (s: Section) => {
     setActiveSections(prev => {
       const next = new Set(prev);
-      if (next.has(s)) {
-        next.delete(s);
-      } else {
-        next.add(s);
-      }
+      next.has(s) ? next.delete(s) : next.add(s);
       return next;
     });
   };

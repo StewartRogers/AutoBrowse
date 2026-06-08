@@ -8,13 +8,15 @@ const EXTRACT_PROMPT = `You are extracting car details from a webpage. The page 
 Return ONLY a valid JSON object — no markdown fences, no explanation.
 Omit any field you cannot find on the page. Never fabricate or guess values.
 
-UNITS: All numeric values must be in US Imperial units:
-- Range / distance → miles (convert km ÷ 1.609 if the page shows km)
-- Dimensions → inches (convert mm ÷ 25.4 if the page shows mm)
-- Cargo volume → cubic feet (convert L × 0.0353 if the page shows litres)
-- Torque → lb-ft (convert Nm × 0.7376 if the page shows Nm)
-- Towing → pounds (convert kg × 2.205 if the page shows kg)
-- Prices → use whatever currency the page shows (note CAD vs USD as-is)
+UNITS: All values must be in Canadian/metric units:
+- Range / distance → kilometres (km)
+- Dimensions → centimetres (cm)
+- Cargo volume → litres (L)
+- Torque → Newton-metres (Nm)
+- Towing capacity → kilograms (kg)
+- Fuel economy → litres per 100 km (L/100km)
+- EV efficiency → litres equivalent per 100 km (Le/100km)
+- Prices → CAD as shown on the page
 
 PHOTO: Use the og:image meta tag URL if present (most reliable). Otherwise use the
 src of the largest primary vehicle hero image. Always return a fully-qualified absolute URL.
@@ -49,24 +51,24 @@ src of the largest primary vehicle hero image. Always return a fully-qualified a
     "termMonths": 0,
     "residualPct": 0,
     "downPayment": 0,
-    "annualMiles": 0,
+    "annualKm": 0,
     "moneyFactor": 0
   },
 
   "specs": {
-    "engine": "string (e.g. '2.0L 4-Cyl Turbo', '150kW Permanent Magnet Motor')",
+    "engine": "string",
     "horsepower": 0,
     "torque": 0,
-    "transmission": "string (e.g. 'CVT', '10-Speed Automatic', 'Single-Speed')",
-    "drivetrain": "string (e.g. 'AWD', 'FWD', 'RWD')",
-    "mpgCombined": 0,
+    "transmission": "string",
+    "drivetrain": "string",
+    "fuelL100km": 0,
     "mpge": 0,
     "evRange": 0,
     "batteryKwh": 0,
     "seating": 0,
-    "cargoCuFt": 0,
-    "towingLbs": 0,
-    "lengthIn": 0,
+    "cargoL": 0,
+    "towingKg": 0,
+    "lengthCm": 0,
     "legroomFront": 0,
     "legroomRear": 0,
     "groundClear": 0
@@ -157,7 +159,7 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
           termMonths:  Number(l.termMonths)  || 36,
           residualPct: Number(l.residualPct) || 0,
           downPayment: Number(l.downPayment) || 0,
-          annualMiles: Number(l.annualMiles) || 12000,
+          annualKm: Number(l.annualKm) || 20000,
           moneyFactor: Number(l.moneyFactor) || 0,
         };
       }
@@ -171,44 +173,17 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
       if (s.torque)        data.specs.torque        = Number(s.torque);
       if (s.transmission)  data.specs.transmission  = s.transmission;
       if (s.drivetrain)    data.specs.drivetrain    = s.drivetrain;
-      if (s.mpgCombined)   data.specs.mpgCombined   = Number(s.mpgCombined);
+      if (s.fuelL100km)    data.specs.fuelL100km    = Number(s.fuelL100km);
       if (s.mpge)          data.specs.mpge          = Number(s.mpge);
       if (s.evRange)       data.specs.evRange       = Number(s.evRange);
       if (s.batteryKwh)    data.specs.batteryKwh    = Number(s.batteryKwh);
       if (s.seating)       data.specs.seating       = Number(s.seating);
-      if (s.cargoCuFt)     data.specs.cargoCuFt     = Number(s.cargoCuFt);
-      if (s.towingLbs)     data.specs.towingLbs     = Number(s.towingLbs);
-      if (s.lengthIn)      data.specs.lengthIn      = Number(s.lengthIn);
+      if (s.cargoL)        data.specs.cargoL        = Number(s.cargoL);
+      if (s.towingKg)      data.specs.towingKg      = Number(s.towingKg);
+      if (s.lengthCm)      data.specs.lengthCm      = Number(s.lengthCm);
       if (s.legroomFront)  data.specs.legroomFront  = Number(s.legroomFront);
       if (s.legroomRear)   data.specs.legroomRear   = Number(s.legroomRear);
       if (s.groundClear)   data.specs.groundClear   = Number(s.groundClear);
-    }
-
-    // Client-side metric safety net: if values look like they're in metric, convert.
-    // EV range: anything > 350 is almost certainly km (no production EV does 350+ miles)
-    if (data.specs?.evRange && data.specs.evRange > 350) {
-      data.specs.evRange = Math.round(data.specs.evRange / 1.609);
-    }
-    // Dimensions: if lengthIn > 250 it's almost certainly mm, not inches
-    if (data.specs?.lengthIn && data.specs.lengthIn > 250) {
-      data.specs.lengthIn = Math.round(data.specs.lengthIn / 25.4);
-    }
-    if (data.specs?.legroomFront && data.specs.legroomFront > 60) {
-      data.specs.legroomFront = Math.round((data.specs.legroomFront / 25.4) * 10) / 10;
-    }
-    if (data.specs?.legroomRear && data.specs.legroomRear > 60) {
-      data.specs.legroomRear = Math.round((data.specs.legroomRear / 25.4) * 10) / 10;
-    }
-    if (data.specs?.groundClear && data.specs.groundClear > 30) {
-      data.specs.groundClear = Math.round((data.specs.groundClear / 25.4) * 10) / 10;
-    }
-    // Torque: if > 800 it's almost certainly Nm (no common vehicle exceeds 800 lb-ft)
-    if (data.specs?.torque && data.specs.torque > 800) {
-      data.specs.torque = Math.round(data.specs.torque * 0.7376);
-    }
-    // Cargo: if cargoCuFt > 150 it's almost certainly litres
-    if (data.specs?.cargoCuFt && data.specs.cargoCuFt > 150) {
-      data.specs.cargoCuFt = Math.round(data.specs.cargoCuFt * 0.0353 * 10) / 10;
     }
 
     return { ok: true, data };

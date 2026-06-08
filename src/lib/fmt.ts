@@ -1,7 +1,7 @@
 // Number formatters — all numbers in the UI use these
 
 export function money(n: number, decimals = 0): string {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+  return '$' + n.toLocaleString('en-CA', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 
 export function moneyK(n: number): string {

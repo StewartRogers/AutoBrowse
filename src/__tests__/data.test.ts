@@ -138,7 +138,7 @@ describe('leaseCalc', () => {
   it('calculates monthly lease payment', () => {
     const v = makeVehicle({
       pricing: makePricing({ msrp: 40000, sellingPrice: 38000, tradeValue: 0, incentives: 0, taxRate: 8 }),
-      lease: { termMonths: 36, residualPct: 55, downPayment: 2000, annualMiles: 12000, moneyFactor: 0.002 },
+      lease: { termMonths: 36, residualPct: 55, downPayment: 2000, annualKm: 20000, moneyFactor: 0.002 },
     });
     const r = leaseCalc(v);
     // cap = 38000 - 2000 - 0 - 0 = 36000
@@ -155,7 +155,7 @@ describe('leaseCalc', () => {
   it('uses sellingPrice as base for residual when msrp is 0', () => {
     const v = makeVehicle({
       pricing: makePricing({ msrp: 0, sellingPrice: 30000, taxRate: 0, tradeValue: 0, incentives: 0 }),
-      lease: { termMonths: 36, residualPct: 50, downPayment: 0, annualMiles: 12000, moneyFactor: 0 },
+      lease: { termMonths: 36, residualPct: 50, downPayment: 0, annualKm: 20000, moneyFactor: 0 },
     });
     const r = leaseCalc(v);
     expect(r.residual).toBeCloseTo(15000); // 30000 * 50%
@@ -166,7 +166,7 @@ describe('leaseCalc', () => {
     // The prototype had no guard; we clamp to max(0, monthly).
     const v = makeVehicle({
       pricing: makePricing({ msrp: 30000, sellingPrice: 30000, tradeValue: 20000, incentives: 15000 }),
-      lease: { termMonths: 36, residualPct: 50, downPayment: 5000, annualMiles: 12000, moneyFactor: 0.002 },
+      lease: { termMonths: 36, residualPct: 50, downPayment: 5000, annualKm: 20000, moneyFactor: 0.002 },
     });
     // cap = max(0, 30000-5000-20000-15000) = 0
     // residual = 30000*0.50 = 15000 → depreciation=(0-15000)/36 is negative → clamp monthly to 0
@@ -177,42 +177,42 @@ describe('leaseCalc', () => {
 // ─── energyCostPerYear ──────────────────────────────────────────────────────
 
 describe('energyCostPerYear', () => {
-  it('calculates gas cost: (miles / mpg) * pricePerGal', () => {
+  it('calculates gas cost: (annualKm / 100) * fuelL100km * fuelCostPerL', () => {
     const v = makeVehicle({
       powertrain: 'gas',
-      specs: { mpgCombined: 30 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 4.00, electricityPerKwh: 0.17, insuranceYr: 0, maintenanceYr: 0 },
+      specs: { fuelL100km: 10 },
+      ownership: { annualKm: 20000, fuelCostPerL: 2.00, electricityPerKwh: 0.13, insuranceYr: 0, maintenanceYr: 0 },
     });
-    // 12000/30 * 4.00 = 1600
-    expect(energyCostPerYear(v)).toBeCloseTo(1600);
+    // (20000/100) * 10 * 2.00 = 4000
+    expect(energyCostPerYear(v)).toBeCloseTo(4000);
   });
 
-  it('calculates EV cost: (miles / 3.3 miPerKwh) * kwhPrice', () => {
+  it('calculates EV cost: (annualKm / 100) * 20kWh * kwhPrice', () => {
     const v = makeVehicle({
       powertrain: 'ev',
       specs: {},
-      ownership: { annualMiles: 12000, fuelCostPerGal: 4.00, electricityPerKwh: 0.16, insuranceYr: 0, maintenanceYr: 0 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.20, insuranceYr: 0, maintenanceYr: 0 },
     });
-    // 12000 / 3.3 * 0.16 ≈ 581.82
-    expect(energyCostPerYear(v)).toBeCloseTo(581.82, 0);
+    // (20000/100) * 20 * 0.20 = 800
+    expect(energyCostPerYear(v)).toBeCloseTo(800);
   });
 
-  it('hybrid uses mpgCombined, not EV formula', () => {
+  it('hybrid uses fuelL100km formula', () => {
     const v = makeVehicle({
       powertrain: 'hybrid',
-      specs: { mpgCombined: 44 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 0, maintenanceYr: 0 },
+      specs: { fuelL100km: 5.4 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 0, maintenanceYr: 0 },
     });
-    expect(energyCostPerYear(v)).toBeCloseTo((12000 / 44) * 3.65, 1);
+    expect(energyCostPerYear(v)).toBeCloseTo((20000 / 100) * 5.4 * 1.65, 1);
   });
 
-  it('falls back to 30 mpg when mpgCombined is missing', () => {
+  it('falls back to 9.0 L/100km when fuelL100km is missing', () => {
     const v = makeVehicle({
       powertrain: 'gas',
       specs: {},
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.00, electricityPerKwh: 0.17, insuranceYr: 0, maintenanceYr: 0 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.50, electricityPerKwh: 0.13, insuranceYr: 0, maintenanceYr: 0 },
     });
-    expect(energyCostPerYear(v)).toBeCloseTo((12000 / 30) * 3.00);
+    expect(energyCostPerYear(v)).toBeCloseTo((20000 / 100) * 9.0 * 1.50);
   });
 });
 
@@ -222,22 +222,22 @@ describe('ownershipCalc', () => {
   it('sums energy + insurance + maintenance for projections', () => {
     const v = makeVehicle({
       powertrain: 'gas',
-      specs: { mpgCombined: 30 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 4.00, electricityPerKwh: 0.17, insuranceYr: 1800, maintenanceYr: 600 },
+      specs: { fuelL100km: 10 },
+      ownership: { annualKm: 20000, fuelCostPerL: 2.00, electricityPerKwh: 0.13, insuranceYr: 1800, maintenanceYr: 600 },
     });
-    // energy = 1600, perYear = 1600 + 1800 + 600 = 4000
+    // energy = (20000/100)*10*2.00 = 4000, perYear = 4000 + 1800 + 600 = 6400
     const r = ownershipCalc(v);
-    expect(r.perYear).toBeCloseTo(4000);
-    expect(r.y1).toBeCloseTo(4000);
-    expect(r.y3).toBeCloseTo(12000);
-    expect(r.y5).toBeCloseTo(20000);
+    expect(r.perYear).toBeCloseTo(6400);
+    expect(r.y1).toBeCloseTo(6400);
+    expect(r.y3).toBeCloseTo(19200);
+    expect(r.y5).toBeCloseTo(32000);
   });
 
   it('energy component matches energyCostPerYear', () => {
     const v = makeVehicle({
       powertrain: 'ev',
       specs: {},
-      ownership: { annualMiles: 15000, fuelCostPerGal: 3.65, electricityPerKwh: 0.15, insuranceYr: 2000, maintenanceYr: 400 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.15, insuranceYr: 2000, maintenanceYr: 400 },
     });
     expect(ownershipCalc(v).energy).toBeCloseTo(energyCostPerYear(v));
   });

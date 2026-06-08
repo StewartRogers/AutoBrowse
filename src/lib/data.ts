@@ -14,14 +14,14 @@ export interface SpecFields {
   torque?: number;
   transmission?: string;
   drivetrain?: string;
-  mpgCombined?: number;
+  fuelL100km?: number;
   mpge?: number;
   evRange?: number;
   batteryKwh?: number;
   seating?: number;
-  cargoCuFt?: number;
-  towingLbs?: number;
-  lengthIn?: number;
+  cargoL?: number;
+  towingKg?: number;
+  lengthCm?: number;
   legroomFront?: number;
   legroomRear?: number;
   groundClear?: number;
@@ -47,13 +47,13 @@ export interface Lease {
   termMonths: number;
   residualPct: number; // % of MSRP
   downPayment: number;
-  annualMiles: number;
+  annualKm: number;
   moneyFactor: number;
 }
 
 export interface Ownership {
-  annualMiles: number;
-  fuelCostPerGal: number;
+  annualKm: number;
+  fuelCostPerL: number;
   electricityPerKwh: number;
   insuranceYr: number;
   maintenanceYr: number;
@@ -84,7 +84,6 @@ export interface Vehicle {
   color: string;
   dealer: string;
   listingUrl: string;
-  photoUrl: string;
   accent: string; // hex, per-vehicle accent
   powertrain: Powertrain;
   notes: string;
@@ -137,22 +136,22 @@ export interface SpecFieldDef {
 }
 
 export const SPEC_FIELDS: SpecFieldDef[] = [
-  { key: 'engine',       label: 'Engine',           group: 'Powertrain',  kind: 'text' },
-  { key: 'horsepower',   label: 'Horsepower',        group: 'Powertrain',  unit: 'hp',    better: 'high' },
-  { key: 'torque',       label: 'Torque',            group: 'Powertrain',  unit: 'lb-ft', better: 'high' },
-  { key: 'transmission', label: 'Transmission',      group: 'Powertrain',  kind: 'text' },
-  { key: 'drivetrain',   label: 'Drivetrain',        group: 'Powertrain',  kind: 'text' },
-  { key: 'mpgCombined',  label: 'Fuel Economy',      group: 'Efficiency',  unit: 'mpg',   better: 'high', evHide: true },
-  { key: 'mpge',         label: 'Efficiency',        group: 'Efficiency',  unit: 'MPGe',  better: 'high', evOnly: true },
-  { key: 'evRange',      label: 'EV Range',          group: 'Efficiency',  unit: 'mi',    better: 'high', evOnly: true },
-  { key: 'batteryKwh',   label: 'Battery',           group: 'Efficiency',  unit: 'kWh',   better: 'high', evOnly: true },
-  { key: 'seating',      label: 'Seating',           group: 'Practicality',unit: 'seats', better: 'high' },
-  { key: 'cargoCuFt',    label: 'Cargo',             group: 'Practicality',unit: 'cu-ft', better: 'high' },
-  { key: 'towingLbs',    label: 'Towing',            group: 'Practicality',unit: 'lb',    better: 'high' },
-  { key: 'lengthIn',     label: 'Length',            group: 'Dimensions',  unit: 'in' },
-  { key: 'legroomFront', label: 'Front Legroom',     group: 'Comfort',     unit: 'in',    better: 'high' },
-  { key: 'legroomRear',  label: 'Rear Legroom',      group: 'Comfort',     unit: 'in',    better: 'high' },
-  { key: 'groundClear',  label: 'Ground Clearance',  group: 'Comfort',     unit: 'in',    better: 'high' },
+  { key: 'engine',       label: 'Engine',           group: 'Powertrain',   kind: 'text' },
+  { key: 'horsepower',   label: 'Horsepower',        group: 'Powertrain',   unit: 'hp',       better: 'high' },
+  { key: 'torque',       label: 'Torque',            group: 'Powertrain',   unit: 'Nm',       better: 'high' },
+  { key: 'transmission', label: 'Transmission',      group: 'Powertrain',   kind: 'text' },
+  { key: 'drivetrain',   label: 'Drivetrain',        group: 'Powertrain',   kind: 'text' },
+  { key: 'fuelL100km',   label: 'Fuel Economy',      group: 'Efficiency',   unit: 'L/100km',  better: 'low',  evHide: true },
+  { key: 'mpge',         label: 'Efficiency',        group: 'Efficiency',   unit: 'Le/100km', better: 'low',  evOnly: true },
+  { key: 'evRange',      label: 'EV Range',          group: 'Efficiency',   unit: 'km',       better: 'high', evOnly: true },
+  { key: 'batteryKwh',   label: 'Battery',           group: 'Efficiency',   unit: 'kWh',      better: 'high', evOnly: true },
+  { key: 'seating',      label: 'Seating',           group: 'Practicality', unit: 'seats',    better: 'high' },
+  { key: 'cargoL',       label: 'Cargo',             group: 'Practicality', unit: 'L',        better: 'high' },
+  { key: 'towingKg',     label: 'Towing',            group: 'Practicality', unit: 'kg',       better: 'high' },
+  { key: 'lengthCm',     label: 'Length',            group: 'Dimensions',   unit: 'cm' },
+  { key: 'legroomFront', label: 'Front Legroom',     group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'legroomRear',  label: 'Rear Legroom',      group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'groundClear',  label: 'Ground Clearance',  group: 'Comfort',      unit: 'cm',       better: 'high' },
 ];
 
 export const RATING_CATS = [
@@ -196,15 +195,15 @@ export function blankVehicle(): Vehicle {
     createdAt: Date.now(),
     viewedAt: Date.now(),
     make: '', model: '', year: new Date().getFullYear(), trim: '', bodyStyle: 'Sedan',
-    condition: 'New', mileage: 0, color: '', dealer: '', listingUrl: '', photoUrl: '',
+    condition: 'New', mileage: 0, color: '', dealer: '', listingUrl: '',
     accent: '#b4552d', powertrain: 'gas', notes: '',
     specs: {},
     ratings: {},
     testDrive: {}, testDriveNotes: {},
-    pricing: { msrp: 0, sellingPrice: 0, discounts: 0, incentives: 0, tradeValue: 0, taxRate: 8.0, fees: 1200 },
+    pricing: { msrp: 0, sellingPrice: 0, discounts: 0, incentives: 0, tradeValue: 0, taxRate: 13, fees: 1000 },
     finance: { downPayment: 3000, apr: 6.4, termMonths: 60 },
-    lease: { termMonths: 36, residualPct: 58, downPayment: 2500, annualMiles: 12000, moneyFactor: 0.0022 },
-    ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 1700, maintenanceYr: 700 },
+    lease: { termMonths: 36, residualPct: 58, downPayment: 2500, annualKm: 20000, moneyFactor: 0.0022 },
+    ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1700, maintenanceYr: 700 },
     attachments: [],
   };
 }
@@ -264,13 +263,13 @@ export function leaseCalc(v: Pick<Vehicle, 'pricing' | 'lease'>): LeaseResult {
 
 export function energyCostPerYear(v: Pick<Vehicle, 'powertrain' | 'ownership' | 'specs'>): number {
   const o = v.ownership;
-  const miles = o.annualMiles || 0;
+  const km = o.annualKm || 0;
   if (v.powertrain === 'ev') {
-    const miPerKwh = 3.3;
-    return (miles / miPerKwh) * (o.electricityPerKwh || 0);
+    const kWhPer100km = 20; // default; ~equivalent to 3.3 mi/kWh
+    return (km / 100) * kWhPer100km * (o.electricityPerKwh || 0);
   }
-  const mpg = v.specs.mpgCombined || 30;
-  return (miles / mpg) * (o.fuelCostPerGal || 0);
+  const l100km = v.specs.fuelL100km || 9.0; // default fallback ~30 mpg equivalent
+  return (km / 100) * l100km * (o.fuelCostPerL || 0);
 }
 
 export interface OwnershipResult {
@@ -302,7 +301,7 @@ export interface MetricDef {
   label: string;
   dir: 'high' | 'low';
   fn: (v: Vehicle) => number;
-  fmt: 'money' | 'score' | 'in' | 'cuft' | 'hp' | 'raw';
+  fmt: 'money' | 'score' | 'cm' | 'L' | 'hp' | 'raw';
 }
 
 export const MATRIX_METRICS: Record<string, MetricDef> = {
@@ -311,12 +310,12 @@ export const MATRIX_METRICS: Record<string, MetricDef> = {
   ownership:   { label: '5-yr Ownership', dir: 'low',  fn: v => ownershipCalc(v).y5,       fmt: 'money' },
   comfort:     { label: 'Comfort',        dir: 'high', fn: v => v.ratings.comfort || 0,    fmt: 'score' },
   seatComfort: { label: 'Seat Comfort',   dir: 'high', fn: v => v.testDrive.seatComfort || 0, fmt: 'score' },
-  rear:        { label: 'Rear Legroom',   dir: 'high', fn: v => v.specs.legroomRear || 0,  fmt: 'in' },
+  rear:        { label: 'Rear Legroom',   dir: 'high', fn: v => v.specs.legroomRear || 0,  fmt: 'cm' },
   interior:    { label: 'Interior',       dir: 'high', fn: v => v.ratings.interior || 0,   fmt: 'score' },
-  cargo:       { label: 'Cargo Space',    dir: 'high', fn: v => v.specs.cargoCuFt || 0,    fmt: 'cuft' },
+  cargo:       { label: 'Cargo Space',    dir: 'high', fn: v => v.specs.cargoL || 0,       fmt: 'L' },
   tech:        { label: 'Technology',     dir: 'high', fn: v => v.ratings.technology || 0, fmt: 'score' },
-  efficiency:  { label: 'Efficiency',     dir: 'high', fn: v => v.powertrain === 'ev' ? (v.specs.mpge || 0) : (v.specs.mpgCombined || 0) * 3, fmt: 'raw' },
-  performance: { label: 'Performance',   dir: 'high', fn: v => v.specs.horsepower || 0,  fmt: 'hp' },
+  efficiency:  { label: 'Efficiency',     dir: 'high', fn: v => v.powertrain === 'ev' ? (v.specs.mpge ? 100 / v.specs.mpge : 0) : (v.specs.fuelL100km ? 100 / v.specs.fuelL100km : 0), fmt: 'raw' },
+  performance: { label: 'Performance',    dir: 'high', fn: v => v.specs.horsepower || 0,   fmt: 'hp' },
 };
 
 export const DEFAULT_MATRIX: MatrixFactor[] = [
@@ -393,15 +392,15 @@ export function SEED_VEHICLES(): Vehicle[] {
       condition: 'New', mileage: 12, color: 'Platinum White Pearl', dealer: 'Metro Honda', powertrain: 'hybrid',
       accent: '#4f7a52', listingUrl: 'https://example.com/accord',
       notes: 'Roomy, refined, great real-world economy. Top trim has everything.',
-      specs: { engine: '2.0L 4-cyl + 2 motors', horsepower: 204, torque: 247, transmission: 'e-CVT', drivetrain: 'FWD',
-        mpgCombined: 44, seating: 5, cargoCuFt: 16.7, towingLbs: 0, lengthIn: 195.7, legroomFront: 42.3, legroomRear: 40.8, groundClear: 5.5 },
+      specs: { engine: '2.0L 4-cyl + 2 motors', horsepower: 204, torque: 335, transmission: 'e-CVT', drivetrain: 'FWD',
+        fuelL100km: 5.4, seating: 5, cargoL: 473, towingKg: 0, lengthCm: 497, legroomFront: 107, legroomRear: 104, groundClear: 14 },
       ratings: { comfort: 8, driving: 7, interior: 8, technology: 8, appearance: 7, cargo: 7, value: 9 },
       testDrive: { rideQuality: 8, visibility: 8, seatComfort: 9, cabinNoise: 8, acceleration: 7, steeringFeel: 7 },
       testDriveNotes: { rideQuality: 'Composed over rough pavement', seatComfort: 'Best seats of the three I drove' },
-      pricing: { msrp: 38990, sellingPrice: 37800, discounts: 600, incentives: 500, tradeValue: 9000, taxRate: 8.25, fees: 1150 },
+      pricing: { msrp: 38990, sellingPrice: 37800, discounts: 600, incentives: 500, tradeValue: 9000, taxRate: 13, fees: 1000 },
       finance: { downPayment: 4000, apr: 6.2, termMonths: 60 },
-      lease: { termMonths: 36, residualPct: 57, downPayment: 2500, annualMiles: 12000, moneyFactor: 0.00210 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 1650, maintenanceYr: 620 },
+      lease: { termMonths: 36, residualPct: 57, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00210 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1650, maintenanceYr: 620 },
       attachments: [{ id: uid(), name: 'Window Sticker.pdf', type: 'pdf' }, { id: uid(), name: 'Dealer Quote.pdf', type: 'pdf' }],
     }),
     mk({
@@ -409,15 +408,15 @@ export function SEED_VEHICLES(): Vehicle[] {
       condition: 'New', mileage: 6, color: 'Stealth Grey', dealer: 'Tesla Direct', powertrain: 'ev',
       accent: '#3f6f8f', listingUrl: 'https://example.com/model3',
       notes: 'Quickest of the group, lowest energy cost. Ride is firmer; tech-forward cabin.',
-      specs: { engine: 'Dual motor', horsepower: 394, torque: 377, transmission: 'Single-speed', drivetrain: 'AWD',
-        mpge: 132, evRange: 363, batteryKwh: 79, seating: 5, cargoCuFt: 21.0, towingLbs: 0, lengthIn: 185.8, legroomFront: 42.7, legroomRear: 35.2, groundClear: 5.5 },
+      specs: { engine: 'Dual motor', horsepower: 394, torque: 511, transmission: 'Single-speed', drivetrain: 'AWD',
+        mpge: 1.78, evRange: 584, batteryKwh: 79, seating: 5, cargoL: 595, towingKg: 0, lengthCm: 472, legroomFront: 108, legroomRear: 89, groundClear: 14 },
       ratings: { comfort: 7, driving: 9, interior: 7, technology: 9, appearance: 8, cargo: 8, value: 7 },
       testDrive: { rideQuality: 6, visibility: 7, seatComfort: 7, cabinNoise: 9, acceleration: 10, steeringFeel: 8 },
       testDriveNotes: { acceleration: 'Effortless, instant', rideQuality: 'Firm over expansion joints' },
-      pricing: { msrp: 47490, sellingPrice: 47490, discounts: 0, incentives: 7500, tradeValue: 9000, taxRate: 8.25, fees: 995 },
+      pricing: { msrp: 47490, sellingPrice: 47490, discounts: 0, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: 995 },
       finance: { downPayment: 4000, apr: 6.9, termMonths: 60 },
-      lease: { termMonths: 36, residualPct: 56, downPayment: 3000, annualMiles: 12000, moneyFactor: 0.00250 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 1980, maintenanceYr: 380 },
+      lease: { termMonths: 36, residualPct: 56, downPayment: 3000, annualKm: 20000, moneyFactor: 0.00250 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1980, maintenanceYr: 380 },
       attachments: [{ id: uid(), name: 'Configurator.png', type: 'image' }],
     }),
     mk({
@@ -425,15 +424,15 @@ export function SEED_VEHICLES(): Vehicle[] {
       condition: 'New', mileage: 18, color: 'Cavalry Blue', dealer: 'Sunrise Toyota', powertrain: 'gas',
       accent: '#8a7a5c', listingUrl: 'https://example.com/rav4',
       notes: 'Higher seating, most cargo and ground clearance. Engine is a bit coarse under load.',
-      specs: { engine: '2.5L 4-cyl', horsepower: 203, torque: 184, transmission: '8-speed auto', drivetrain: 'AWD',
-        mpgCombined: 30, seating: 5, cargoCuFt: 37.6, towingLbs: 3500, lengthIn: 180.9, legroomFront: 41.0, legroomRear: 37.8, groundClear: 8.4 },
+      specs: { engine: '2.5L 4-cyl', horsepower: 203, torque: 250, transmission: '8-speed auto', drivetrain: 'AWD',
+        fuelL100km: 7.8, seating: 5, cargoL: 1065, towingKg: 1588, lengthCm: 460, legroomFront: 104, legroomRear: 96, groundClear: 21 },
       ratings: { comfort: 7, driving: 6, interior: 6, technology: 7, appearance: 7, cargo: 9, value: 8 },
       testDrive: { rideQuality: 7, visibility: 9, seatComfort: 7, cabinNoise: 6, acceleration: 6, steeringFeel: 6 },
       testDriveNotes: { visibility: 'Commanding view, easy to park', cabinNoise: 'Engine drones on the highway' },
-      pricing: { msrp: 35450, sellingPrice: 34900, discounts: 550, incentives: 0, tradeValue: 9000, taxRate: 8.25, fees: 1100 },
+      pricing: { msrp: 35450, sellingPrice: 34900, discounts: 550, incentives: 0, tradeValue: 9000, taxRate: 13, fees: 1000 },
       finance: { downPayment: 3500, apr: 6.4, termMonths: 60 },
-      lease: { termMonths: 36, residualPct: 60, downPayment: 2500, annualMiles: 12000, moneyFactor: 0.00230 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 1580, maintenanceYr: 720 },
+      lease: { termMonths: 36, residualPct: 60, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00230 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1580, maintenanceYr: 720 },
       attachments: [],
     }),
     mk({
@@ -441,15 +440,15 @@ export function SEED_VEHICLES(): Vehicle[] {
       condition: 'New', mileage: 9, color: 'Serenity White', dealer: 'Capital Hyundai', powertrain: 'ev',
       accent: '#7a5aa8', listingUrl: 'https://example.com/ioniq6',
       notes: 'Quietest, very efficient, comfy ride. Lower roofline hurts rear headroom a touch.',
-      specs: { engine: 'Dual motor', horsepower: 320, torque: 446, transmission: 'Single-speed', drivetrain: 'AWD',
-        mpge: 121, evRange: 316, batteryKwh: 77, seating: 5, cargoCuFt: 11.2, towingLbs: 0, lengthIn: 191.1, legroomFront: 42.3, legroomRear: 39.2, groundClear: 5.1 },
+      specs: { engine: 'Dual motor', horsepower: 320, torque: 605, transmission: 'Single-speed', drivetrain: 'AWD',
+        mpge: 1.94, evRange: 509, batteryKwh: 77, seating: 5, cargoL: 317, towingKg: 0, lengthCm: 486, legroomFront: 107, legroomRear: 100, groundClear: 13 },
       ratings: { comfort: 9, driving: 8, interior: 8, technology: 8, appearance: 8, cargo: 6, value: 8 },
       testDrive: { rideQuality: 9, visibility: 6, seatComfort: 9, cabinNoise: 10, acceleration: 8, steeringFeel: 7 },
       testDriveNotes: { cabinNoise: 'Library quiet at speed', seatComfort: 'Relaxation seats are excellent' },
-      pricing: { msrp: 45600, sellingPrice: 44200, discounts: 1400, incentives: 7500, tradeValue: 9000, taxRate: 8.25, fees: 1050 },
+      pricing: { msrp: 45600, sellingPrice: 44200, discounts: 1400, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: 1000 },
       finance: { downPayment: 4000, apr: 6.6, termMonths: 60 },
-      lease: { termMonths: 36, residualPct: 54, downPayment: 2500, annualMiles: 12000, moneyFactor: 0.00190 },
-      ownership: { annualMiles: 12000, fuelCostPerGal: 3.65, electricityPerKwh: 0.17, insuranceYr: 1820, maintenanceYr: 420 },
+      lease: { termMonths: 36, residualPct: 54, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00190 },
+      ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1820, maintenanceYr: 420 },
       attachments: [{ id: uid(), name: 'Spec Sheet.pdf', type: 'pdf' }],
     }),
   ];

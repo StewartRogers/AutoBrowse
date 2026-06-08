@@ -122,7 +122,6 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
             color={v.color || undefined}
             accent={v.accent}
             height={140}
-            photoUrl={v.photoUrl || undefined}
           />
         </div>
         {v.archived && (
@@ -233,7 +232,9 @@ export default function Garage({ onAddVehicle, onEditVehicle }: GarageProps) {
       case 'payment': return financeCalc(a).monthly - financeCalc(b).monthly;
       case 'rating': return avgRating(b) - avgRating(a);
       case 'economy': {
-        const eco = (v: Vehicle) => v.powertrain === 'ev' ? (v.specs.mpge || 0) : (v.specs.mpgCombined || 0);
+        const eco = (v: Vehicle) => v.powertrain === 'ev'
+          ? (v.specs.mpge ? 1 / v.specs.mpge : 0)
+          : (v.specs.fuelL100km ? 1 / v.specs.fuelL100km : 0);
         return eco(b) - eco(a);
       }
       case 'name': return `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`);

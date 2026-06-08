@@ -43,13 +43,13 @@ function OverviewTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) 
   const rating = avgRating(v);
 
   const eco = v.powertrain === 'ev'
-    ? v.specs.evRange ? `${v.specs.evRange} mi range` : '—'
-    : v.specs.mpgCombined ? `${v.specs.mpgCombined} mpg` : '—';
+    ? v.specs.evRange ? `${v.specs.evRange} km range` : '—'
+    : v.specs.fuelL100km ? `${v.specs.fuelL100km} L/100km` : '—';
 
   return (
     <div className={styles.overviewLayout}>
       <div className={styles.overviewLeft}>
-        <PhotoSlot color={v.color || undefined} accent={v.accent} height={230} photoUrl={v.photoUrl || undefined} />
+        <PhotoSlot color={v.color || undefined} accent={v.accent} height={230} />
 
         {/* Key specs */}
         <div className={styles.keySpecs}>
@@ -57,7 +57,7 @@ function OverviewTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) 
             { label: v.powertrain === 'ev' ? 'Motor' : 'Engine', value: v.specs.engine || '—' },
             { label: v.powertrain === 'ev' ? 'Range' : 'Economy', value: eco },
             { label: 'Seating', value: v.specs.seating ? `${v.specs.seating} seats` : '—' },
-            { label: 'Cargo', value: v.specs.cargoCuFt ? `${v.specs.cargoCuFt} cu-ft` : '—' },
+            { label: 'Cargo', value: v.specs.cargoL ? `${v.specs.cargoL} L` : '—' },
             { label: 'Drivetrain', value: v.specs.drivetrain || '—' },
             { label: 'HP', value: v.specs.horsepower ? `${v.specs.horsepower} hp` : '—' },
           ].map(({ label, value }) => (
@@ -302,8 +302,8 @@ function LeaseTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
           <Field label="Residual (% of MSRP)">
             <input className="input num" type="number" step="0.1" value={l.residualPct} onChange={e => setL({ residualPct: Number(e.target.value) })} />
           </Field>
-          <Field label="Annual Miles">
-            <input className="input num" type="number" value={l.annualMiles} onChange={e => setL({ annualMiles: Number(e.target.value) })} />
+          <Field label="Annual km">
+            <input className="input num" type="number" value={l.annualKm} onChange={e => setL({ annualKm: Number(e.target.value) })} />
           </Field>
           <Field label="Money Factor" hint={`≈ ${(l.moneyFactor * 2400).toFixed(2)}% APR`}>
             <input className="input num" type="number" step="0.0001" value={l.moneyFactor} onChange={e => setL({ moneyFactor: Number(e.target.value) })} />
@@ -332,11 +332,11 @@ function CostToOwnTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>)
     <div className={styles.financeLayout}>
       <div>
         <div className={styles.fieldStack}>
-          <Field label="Annual Miles">
-            <input className="input num" type="number" value={o.annualMiles} onChange={e => setO({ annualMiles: Number(e.target.value) })} />
+          <Field label="Annual km">
+            <input className="input num" type="number" value={o.annualKm} onChange={e => setO({ annualKm: Number(e.target.value) })} />
           </Field>
           {v.powertrain !== 'ev'
-            ? <Field label="Fuel Cost / Gallon"><input className="input num" type="number" step="0.01" value={o.fuelCostPerGal} onChange={e => setO({ fuelCostPerGal: Number(e.target.value) })} /></Field>
+            ? <Field label="Fuel Cost / L"><input className="input num" type="number" step="0.01" value={o.fuelCostPerL} onChange={e => setO({ fuelCostPerL: Number(e.target.value) })} /></Field>
             : <Field label="Electricity / kWh"><input className="input num" type="number" step="0.01" value={o.electricityPerKwh} onChange={e => setO({ electricityPerKwh: Number(e.target.value) })} /></Field>
           }
           <Field label="Insurance / Year"><input className="input num" type="number" value={o.insuranceYr} onChange={e => setO({ insuranceYr: Number(e.target.value) })} /></Field>
