@@ -1,12 +1,6 @@
 import { GoogleGenAI } from '@google/genai';
 import type { Vehicle } from './data';
 
-// Known valid Gemini model prefixes — catches obvious typos like "gemini-3.1-flash-lite"
-const KNOWN_MODELS = [
-  'gemini-2.5-pro', 'gemini-2.5-flash',
-  'gemini-2.0-flash', 'gemini-2.0-pro',
-  'gemini-1.5-pro', 'gemini-1.5-flash',
-];
 
 const EXTRACT_PROMPT = `You are extracting car details from a webpage. The page may be a dealer listing
 (specific car for sale) or a manufacturer model page (spec sheet for a model line).
@@ -87,25 +81,18 @@ export type ScrapeResult = {
   error: string;
 };
 
-export function getGeminiConfig(): { apiKey: string; model: string; modelError?: string } {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY ?? '';
-  const model  = import.meta.env.VITE_GEMINI_MODEL  || 'gemini-2.0-flash';
-  const valid  = KNOWN_MODELS.some(m => model.startsWith(m));
+export function getGeminiConfig(): { apiKey: string; model: string } {
   return {
-    apiKey,
-    model,
-    modelError: valid ? undefined : `Unknown model "${model}". Valid options: ${KNOWN_MODELS.join(', ')}. Update VITE_GEMINI_MODEL in .env and restart.`,
+    apiKey: import.meta.env.VITE_GEMINI_API_KEY ?? '',
+    model:  import.meta.env.VITE_GEMINI_MODEL  || 'gemini-2.0-flash',
   };
 }
 
 export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
-  const { apiKey, model, modelError } = getGeminiConfig();
+  const { apiKey, model } = getGeminiConfig();
 
   if (!apiKey) {
     return { ok: false, error: 'No Gemini API key set. Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.' };
-  }
-  if (modelError) {
-    return { ok: false, error: modelError };
   }
 
   try {
