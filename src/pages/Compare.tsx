@@ -194,7 +194,7 @@ export default function Compare() {
 
   // Ranked / sorted vehicles
   const vehicles = useMemo(() => {
-    let base = compareIds
+    const base = compareIds
       .map(id => allVehicles.find(v => v.id === id && !v.archived))
       .filter((v): v is Vehicle => !!v);
 
@@ -224,7 +224,11 @@ export default function Compare() {
   const toggleSection = (s: Section) => {
     setActiveSections(prev => {
       const next = new Set(prev);
-      next.has(s) ? next.delete(s) : next.add(s);
+      if (next.has(s)) {
+        next.delete(s);
+      } else {
+        next.add(s);
+      }
       return next;
     });
   };
