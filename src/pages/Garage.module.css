@@ -25,13 +25,14 @@
   display: flex;
   flex-direction: column;
   transition: box-shadow .14s ease;
-  overflow: hidden;
 }
 .card:hover { box-shadow: var(--shadow-lg); }
 .excluded { opacity: .9; }
 
 .photoWrap {
   position: relative;
+  overflow: hidden;
+  border-radius: var(--r-sm) var(--r-sm) 0 0;
 }
 .ptBadge {
   position: absolute;
