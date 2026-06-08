@@ -5,7 +5,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently -n api,vite -c cyan,green \"node server.cjs\" \"vite\"",
+    "dev:vite": "vite",
+    "dev:api": "node server.cjs",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -14,6 +16,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
+    "express": "^5.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-router-dom": "^7.6.2",
@@ -28,6 +31,7 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.8",
+    "concurrently": "^10.0.3",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
