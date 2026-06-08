@@ -1,0 +1,117 @@
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Section toggle pills */
+.sectionToggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.sectionToggle {
+  padding: 6px 14px;
+  border-radius: 99px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1.5px solid var(--line);
+  color: var(--ink-soft);
+  background: var(--card);
+  transition: all .14s;
+  white-space: nowrap;
+}
+.sectionToggle:hover { border-color: var(--accent-soft); color: var(--ink); }
+.sectionToggleOn {
+  border-color: var(--accent) !important;
+  color: var(--accent) !important;
+  background: var(--accent-tint) !important;
+  font-weight: 600;
+}
+
+/* Table */
+.tableWrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--card);
+  box-shadow: var(--shadow);
+}
+.table {
+  display: grid;
+  min-width: 100%;
+}
+
+.headerCell {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--card);
+  border-bottom: 1px solid var(--line);
+}
+
+.vehicleHeader {
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.sectionBand {
+  background: var(--paper-2);
+  padding: 8px 14px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--accent);
+  border-top: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.labelCell {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  border-right: 1px solid var(--line-soft);
+  display: flex;
+  align-items: center;
+}
+
+.dataCell {
+  padding: 10px 14px;
+  font-size: 13.5px;
+  display: flex;
+  align-items: center;
+  border-right: 1px solid var(--line-soft);
+}
+.dataCell:last-child { border-right: none; }
+
+.zebra { background: var(--paper); }
+
+.winner {
+  background: var(--accent-tint) !important;
+  color: var(--accent) !important;
+  font-weight: 600;
+}
+.winner .num { color: var(--accent) !important; }
+
+/* Picker row */
+.pickerRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--line);
+  text-align: left;
+  width: 100%;
+  transition: all .12s;
+}
+.pickerRow:hover { border-color: var(--accent-soft); background: var(--accent-tint); }

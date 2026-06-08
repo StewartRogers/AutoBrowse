@@ -1,0 +1,27 @@
+.slot {
+  width: 100%;
+  border-radius: var(--r);
+  background-color: var(--paper-2);
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--stripe-color, rgba(180,85,45,.08)) 0px,
+    var(--stripe-color, rgba(180,85,45,.08)) 10px,
+    transparent 10px,
+    transparent 20px
+  );
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 12px;
+  overflow: hidden;
+}
+.colorLabel {
+  font-size: 12px;
+  color: var(--ink-soft);
+  background: rgba(255,253,248,.82);
+  border: 1px solid var(--line);
+  border-radius: 99px;
+  padding: 3px 10px;
+  backdrop-filter: blur(4px);
+}

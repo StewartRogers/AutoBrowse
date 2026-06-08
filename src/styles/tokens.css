@@ -1,0 +1,43 @@
+:root {
+  /* ── Colors ── */
+  --paper:        #faf6ef;
+  --paper-2:      #f4eee3;
+  --card:         #fffdf8;
+  --ink:          #2e2620;
+  --ink-soft:     #6f6457;
+  --ink-faint:    #9b8f7e;
+  --line:         #e4dccd;
+  --line-soft:    #ece5d8;
+  --accent:       #b4552d;
+  --accent-soft:  #f0d9c9;
+  --accent-tint:  #fbeee4;
+  --neutral:      #d9cdba;
+  --good:         #4f7a52;
+  --good-tint:    #e6efe4;
+  --warn:         #b07d2a;
+  --bad:          #a9492f;
+
+  /* powertrain */
+  --gas:    #8a7a5c;
+  --hybrid: #4f7a52;
+  --ev:     #3f6f8f;
+
+  /* ── Typography ── */
+  --serif: 'Newsreader', Georgia, serif;
+  --sans:  'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  --mono:  'IBM Plex Mono', ui-monospace, monospace;
+
+  /* ── Radius ── */
+  --r-sm: 6px;
+  --r:    10px;
+  --r-lg: 16px;
+
+  /* ── Shadows ── */
+  --shadow:    0 1px 2px rgba(46,38,32,.04), 0 8px 24px -16px rgba(46,38,32,.18);
+  --shadow-lg: 0 1px 2px rgba(46,38,32,.05), 0 24px 48px -28px rgba(46,38,32,.30);
+
+  /* ── Layout ── */
+  --sidebar-w:    246px;
+  --content-max:  1320px;
+  --content-pad:  36px;
+}

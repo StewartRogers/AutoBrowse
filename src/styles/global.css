@@ -1,0 +1,177 @@
+/* ── Reset & base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html { font-size: 14px; }
+
+body {
+  font-family: var(--sans);
+  background: var(--paper);
+  color: var(--ink);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Monospaced numbers ── */
+.num {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Typography ── */
+h1, h2, h3, h4 {
+  font-family: var(--serif);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1.12;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; font-family: var(--sans); border: none; background: none; }
+input, textarea, select { font-family: var(--sans); font-size: inherit; }
+
+/* ── Page entrance animation ── */
+@keyframes fade-in {
+  from { transform: translateY(7px); }
+  to   { transform: none; }
+}
+.fade-in {
+  animation: fade-in 0.4s cubic-bezier(.2,.7,.2,1) both;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--neutral); border-radius: 99px; }
+
+/* ── App layout ── */
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+}
+
+.app-sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  position: fixed;
+  top: 0; left: 0; bottom: 0;
+  background: var(--card);
+  border-right: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+}
+
+.app-main {
+  margin-left: var(--sidebar-w);
+  flex: 1;
+  min-width: 0;
+  overflow-x: hidden;
+}
+
+.app-content {
+  max-width: var(--content-max);
+  margin: 0 auto;
+  padding: 40px var(--content-pad) 80px;
+}
+
+/* ── Card ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  box-shadow: var(--shadow);
+}
+
+/* ── Buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13.5px;
+  font-weight: 500;
+  transition: all .14s ease;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { background: #9e4525; }
+
+.btn-secondary {
+  background: var(--card);
+  color: var(--ink);
+  border: 1px solid var(--line);
+}
+.btn-secondary:hover { background: var(--paper-2); }
+
+.btn-ghost {
+  color: var(--ink-soft);
+  padding: 6px 10px;
+}
+.btn-ghost:hover { background: var(--paper-2); color: var(--ink); }
+
+.btn-danger {
+  color: var(--bad);
+}
+.btn-danger:hover { background: #fdf0ee; }
+
+/* ── Form inputs ── */
+.input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 13.5px;
+  transition: border-color .14s ease;
+  outline: none;
+}
+.input:focus { border-color: var(--accent); }
+.input::placeholder { color: var(--ink-faint); }
+
+textarea.input { resize: vertical; }
+
+.select {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%239b8f7e' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+}
+
+/* ── Label ── */
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .07em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: var(--line-soft);
+  margin: 12px 0;
+}
+
+/* ── Overlay backdrop ── */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(46,38,32,.35);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+/* ── Utility ── */
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }

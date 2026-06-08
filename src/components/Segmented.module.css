@@ -1,0 +1,24 @@
+.track {
+  display: inline-flex;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  padding: 3px;
+  gap: 2px;
+}
+.pill {
+  padding: 5px 14px;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  transition: all .14s ease;
+  white-space: nowrap;
+}
+.pill:hover { color: var(--ink); background: var(--card); }
+.active {
+  background: var(--card) !important;
+  color: var(--accent) !important;
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(46,38,32,.10);
+}

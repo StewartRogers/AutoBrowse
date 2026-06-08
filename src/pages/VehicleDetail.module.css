@@ -1,0 +1,201 @@
+.backLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 16px;
+  transition: color .12s;
+}
+.backLink:hover { color: var(--accent); }
+
+.detailHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.excludedBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  color: var(--ink-soft);
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+/* Tab bar */
+.tabBar {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 24px;
+  gap: 0;
+  scrollbar-width: none;
+  position: relative;
+}
+.tabBar::-webkit-scrollbar { display: none; }
+.tabBtn {
+  flex-shrink: 0;
+  padding: 10px 16px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  transition: all .14s;
+  white-space: nowrap;
+}
+.tabBtn:hover { color: var(--ink); }
+.tabActive {
+  color: var(--accent) !important;
+  border-bottom-color: var(--accent) !important;
+  font-weight: 600;
+}
+.tabScrollFade {
+  position: sticky;
+  right: 0;
+  width: 32px;
+  flex-shrink: 0;
+  background: linear-gradient(to right, transparent, var(--paper));
+  pointer-events: none;
+}
+
+/* Overview */
+.overviewLayout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 820px) {
+  .overviewLayout { grid-template-columns: 1fr; }
+}
+.overviewLeft { display: flex; flex-direction: column; gap: 20px; }
+.keySpecs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.keySpec {
+  padding: 10px;
+  background: var(--paper-2);
+  border-radius: var(--r-sm);
+}
+.overviewRight {}
+.resultCard {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.resultStat {
+  display: flex;
+  flex-direction: column;
+  gap: 4;
+}
+.resultVal { font-size: 22px; font-weight: 500; color: var(--ink); }
+.resultAccent { color: var(--accent); font-size: 28px !important; }
+.resultSub { font-size: 12px; color: var(--ink-soft); }
+.resultGrid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* General tab content */
+.tabContent { display: flex; flex-direction: column; gap: 24px; }
+
+/* Specs */
+.specGroup { display: flex; flex-direction: column; gap: 12px; }
+.specRows { display: flex; flex-direction: column; gap: 1px; }
+.specRow {
+  display: flex;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line-soft);
+  gap: 16px;
+}
+.specRow:last-child { border-bottom: none; }
+.specLabel { flex: 1; font-size: 13.5px; color: var(--ink-soft); }
+.specUnit { color: var(--ink-faint); font-size: 11px; }
+
+/* Ratings */
+.ratingSummary { padding: 16px 20px; margin-bottom: 4px; }
+.ratingRows { display: flex; flex-direction: column; gap: 1px; }
+.ratingRow {
+  display: flex;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line-soft);
+  gap: 16px;
+}
+.ratingRow:last-child { border-bottom: none; }
+.ratingLabel { min-width: 160px; font-size: 13.5px; color: var(--ink-soft); }
+
+/* Test drive */
+.tdRow { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line-soft); }
+.tdRow:last-child { border-bottom: none; }
+.tdHeader { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+
+/* Pricing */
+.pricingLayout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 720px) { .pricingLayout { grid-template-columns: 1fr; } }
+.fieldStack { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+
+.otdCard { padding: 18px; }
+.otdRows { margin-top: 12px; display: flex; flex-direction: column; gap: 0; }
+.otdRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
+  font-size: 13.5px;
+  color: var(--ink-soft);
+}
+.otdRow:last-child { border-bottom: none; }
+.green { color: var(--good) !important; }
+.note { color: var(--ink-faint) !important; font-style: italic; }
+.otdTotal {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 2px solid var(--line);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+/* Finance / lease / ownership layout */
+.financeLayout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 24px;
+  align-items: start;
+}
+@media (max-width: 720px) { .financeLayout { grid-template-columns: 1fr; } }
+.resultSideCard { padding: 18px; }
+.resultSideRows { display: flex; flex-direction: column; gap: 14px; margin-top: 12px; }
+
+/* Attachments */
+.attachmentTile {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  cursor: default;
+}

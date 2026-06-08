@@ -1,0 +1,10 @@
+.track {
+  width: 100%;
+  background: var(--paper-2);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.fill {
+  border-radius: 99px;
+  transition: width 0.45s cubic-bezier(.2,.7,.2,1);
+}

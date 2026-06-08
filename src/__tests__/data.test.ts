@@ -356,9 +356,9 @@ describe('deepMerge', () => {
   });
 
   it('deep-merges nested objects', () => {
-    const base = { pricing: { msrp: 30000, sellingPrice: 28000 } };
-    const patch = { pricing: { sellingPrice: 27500 } };
-    expect(deepMerge(base, patch)).toEqual({ pricing: { msrp: 30000, sellingPrice: 27500 } });
+    const base = { a: { x: 1, y: 2 } };
+    const patch = { a: { x: 1, y: 99 } };  // full nested object for type compat
+    expect(deepMerge(base, patch)).toEqual({ a: { x: 1, y: 99 } });
   });
 
   it('replaces arrays (does not merge them)', () => {

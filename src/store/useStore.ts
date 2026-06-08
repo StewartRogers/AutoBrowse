@@ -4,7 +4,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import {
-  Vehicle, MatrixFactor,
+  type Vehicle, type MatrixFactor,
   blankVehicle, deepMerge, uid,
   SEED_VEHICLES, DEFAULT_MATRIX,
 } from '../lib/data';
@@ -39,7 +39,7 @@ const STORE_KEY = 'autobrowse_v1';
 
 export const useStore = create<AppState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       vehicles: SEED_VEHICLES(),
       matrix: DEFAULT_MATRIX,
       compareIds: [],
