@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AutoBrowse — Car Shopping Workbook</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=IBM+Plex+Mono:wght@400;500;600&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    /* Warm editorial palette */
+    --paper: #faf6ef;
+    --paper-2: #f4eee3;
+    --card: #fffdf8;
+    --ink: #2e2620;
+    --ink-soft: #6f6457;
+    --ink-faint: #9b8f7e;
+    --line: #e4dccd;
+    --line-soft: #ece5d8;
+    --accent: #b4552d;
+    --accent-soft: #f0d9c9;
+    --accent-tint: #fbeee4;
+    --neutral: #d9cdba;
+    --good: #4f7a52;
+    --good-tint: #e6efe4;
+    --warn: #b07d2a;
+    --bad: #a9492f;
+
+    --gas: #8a7a5c;
+    --hybrid: #4f7a52;
+    --ev: #3f6f8f;
+
+    --serif: 'Newsreader', Georgia, serif;
+    --sans: 'Hanken Grotesk', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    --mono: 'IBM Plex Mono', ui-monospace, monospace;
+
+    --r-sm: 6px;
+    --r: 10px;
+    --r-lg: 16px;
+    --shadow: 0 1px 2px rgba(46,38,32,.04), 0 8px 24px -16px rgba(46,38,32,.18);
+    --shadow-lg: 0 1px 2px rgba(46,38,32,.05), 0 24px 48px -28px rgba(46,38,32,.30);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: var(--sans);
+    background: var(--paper);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  #root { height: 100%; }
+
+  h1, h2, h3, h4 { font-family: var(--serif); font-weight: 500; margin: 0; letter-spacing: -0.01em; line-height: 1.12; }
+  button { font-family: inherit; cursor: pointer; }
+  input, select, textarea { font-family: inherit; }
+  a { color: inherit; }
+  ::selection { background: var(--accent-soft); }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-thumb { background: var(--neutral); border-radius: 8px; border: 3px solid var(--paper); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--ink-faint); }
+  ::-webkit-scrollbar-track { background: transparent; }
+
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+
+  /* ---- Shared atoms ---- */
+  .btn {
+    border: 1px solid var(--line); background: var(--card); color: var(--ink);
+    padding: 8px 14px; border-radius: var(--r-sm); font-size: 13.5px; font-weight: 500;
+    display: inline-flex; align-items: center; gap: 7px; transition: all .14s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--ink-faint); background: var(--paper-2); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #9d4724; border-color: #9d4724; }
+  .btn.ghost { background: transparent; border-color: transparent; color: var(--ink-soft); }
+  .btn.ghost:hover { background: var(--paper-2); color: var(--ink); }
+  .btn.sm { padding: 5px 10px; font-size: 12.5px; }
+  .btn.danger:hover { border-color: var(--bad); color: var(--bad); background: #fbeeea; }
+
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; padding: 3px 9px; border-radius: 100px;
+    font-size: 11.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+  }
+
+  .field-label {
+    font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 6px; display: block;
+  }
+  .inp {
+    width: 100%; padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--r-sm);
+    background: var(--card); color: var(--ink); font-size: 14px; transition: border-color .14s, box-shadow .14s;
+  }
+  .inp:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-tint); }
+  textarea.inp { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: var(--r); }
+
+  .fade-in { animation: fade .4s cubic-bezier(.2,.7,.2,1) both; }
+  @keyframes fade { from { transform: translateY(7px); } to { transform: none; } }
+
+  .scroll-x { overflow-x: auto; scrollbar-width: thin; }
+
+  [data-tip] { position: relative; }
+</style>
+
+<!-- React + Babel (pinned) -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+</head>
+<body>
+<div id="root">
+  <div id="boot-splash" style="position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;background:var(--paper);">
+    <div style="display:flex;align-items:center;gap:12px;">
+      <div style="width:40px;height:40px;border-radius:10px;background:var(--accent);display:flex;align-items:center;justify-content:center;">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11l2-5h10l2 5M3 16h18v-3l-1-2H4l-1 2zM6 16v2M18 16v2M7 13h2M15 13h2"/></svg>
+      </div>
+      <div style="font-family:var(--serif);font-size:22px;font-weight:600;color:var(--ink);">AutoBrowse</div>
+    </div>
+    <div style="width:130px;height:4px;border-radius:10px;background:var(--line);overflow:hidden;">
+      <div style="width:40%;height:100%;border-radius:10px;background:var(--accent);animation:boot 1s ease-in-out infinite;"></div>
+    </div>
+  </div>
+</div>
+<style>@keyframes boot{0%{transform:translateX(-130%)}100%{transform:translateX(330%)}}</style>
+
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="data.jsx"></script>
+<script type="text/babel" src="ui.jsx"></script>
+<script type="text/babel" src="Dashboard.jsx"></script>
+<script type="text/babel" src="VehicleForm.jsx"></script>
+<script type="text/babel" src="Garage.jsx"></script>
+<script type="text/babel" src="VehicleDetail.jsx"></script>
+<script type="text/babel" src="Compare.jsx"></script>
+<script type="text/babel" src="Matrix.jsx"></script>
+<script type="text/babel" src="App.jsx"></script>
+</body>
+</html>
