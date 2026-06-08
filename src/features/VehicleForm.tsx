@@ -4,6 +4,7 @@ import Modal from '../components/Modal';
 import Field from '../components/Field';
 import Segmented from '../components/Segmented';
 import { blankVehicle, BODY_STYLES, ACCENT_PALETTE, type Vehicle, type Powertrain, type Condition } from '../lib/data';
+import { scrapeVehicleFromUrl } from '../lib/geminiScrape';
 
 interface Props {
   initial?: Vehicle;
@@ -25,11 +26,33 @@ const COND_OPTIONS = [
 
 export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [aiError, setAiError] = useState('');
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
   const setPricing = (patch: Partial<Vehicle['pricing']>) => setV(prev => ({ ...prev, pricing: { ...prev.pricing, ...patch } }));
 
   const canSave = v.make.trim().length > 0 && v.model.trim().length > 0;
+
+  async function handleAiFill() {
+    if (!v.listingUrl.trim()) return;
+    setAiStatus('loading');
+    setAiError('');
+    const result = await scrapeVehicleFromUrl(v.listingUrl.trim());
+    if (!result.ok) {
+      setAiStatus('error');
+      setAiError(result.error);
+      return;
+    }
+    const { specs, pricing, ...rest } = result.data;
+    setV(prev => ({
+      ...prev,
+      ...rest,
+      specs: specs ? { ...prev.specs, ...specs } : prev.specs,
+      pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
+    }));
+    setAiStatus('idle');
+  }
 
   return (
     <Modal
@@ -105,9 +128,31 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           </Field>
         </div>
 
-        {/* Listing URL */}
+        {/* Listing URL + AI Fill */}
         <Field label="Listing URL">
-          <input className="input" type="url" value={v.listingUrl} onChange={e => set({ listingUrl: e.target.value })} placeholder="https://..." />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input
+              className="input"
+              type="url"
+              value={v.listingUrl}
+              onChange={e => set({ listingUrl: e.target.value })}
+              placeholder="https://..."
+              style={{ flex: 1 }}
+            />
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={!v.listingUrl.trim() || aiStatus === 'loading'}
+              onClick={handleAiFill}
+              title="Use Gemini AI to fill in details from this URL"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill'}
+            </button>
+          </div>
+          {aiStatus === 'error' && (
+            <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{aiError}</div>
+          )}
         </Field>
 
         {/* Accent color */}

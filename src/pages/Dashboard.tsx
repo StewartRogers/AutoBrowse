@@ -136,7 +136,7 @@ export default function Dashboard() {
           onKeyDown={e => e.key === 'Enter' && navigate(`/vehicle/${topMatch.vehicle.id}`)}
         >
           <div className={styles.spotlightPhoto}>
-            <PhotoSlot color={topMatch.vehicle.color || undefined} accent={topMatch.vehicle.accent} height={220} />
+            <PhotoSlot color={topMatch.vehicle.color || undefined} accent={topMatch.vehicle.accent} height={220} photoUrl={topMatch.vehicle.photoUrl || undefined} />
           </div>
           <div className={styles.spotlightInfo}>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>

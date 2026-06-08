@@ -122,6 +122,7 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
             color={v.color || undefined}
             accent={v.accent}
             height={140}
+            photoUrl={v.photoUrl || undefined}
           />
         </div>
         {v.archived && (

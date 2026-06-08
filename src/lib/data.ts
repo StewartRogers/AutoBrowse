@@ -84,6 +84,7 @@ export interface Vehicle {
   color: string;
   dealer: string;
   listingUrl: string;
+  photoUrl: string;
   accent: string; // hex, per-vehicle accent
   powertrain: Powertrain;
   notes: string;
@@ -195,7 +196,7 @@ export function blankVehicle(): Vehicle {
     createdAt: Date.now(),
     viewedAt: Date.now(),
     make: '', model: '', year: new Date().getFullYear(), trim: '', bodyStyle: 'Sedan',
-    condition: 'New', mileage: 0, color: '', dealer: '', listingUrl: '',
+    condition: 'New', mileage: 0, color: '', dealer: '', listingUrl: '', photoUrl: '',
     accent: '#b4552d', powertrain: 'gas', notes: '',
     specs: {},
     ratings: {},

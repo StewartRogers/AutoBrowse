@@ -49,7 +49,7 @@ function OverviewTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) 
   return (
     <div className={styles.overviewLayout}>
       <div className={styles.overviewLeft}>
-        <PhotoSlot color={v.color || undefined} accent={v.accent} height={230} />
+        <PhotoSlot color={v.color || undefined} accent={v.accent} height={230} photoUrl={v.photoUrl || undefined} />
 
         {/* Key specs */}
         <div className={styles.keySpecs}>
