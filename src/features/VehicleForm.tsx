@@ -5,6 +5,7 @@ import Field from '../components/Field';
 import Segmented from '../components/Segmented';
 import { blankVehicle, BODY_STYLES, ACCENT_PALETTE, type Vehicle, type Powertrain, type Condition } from '../lib/data';
 import { scrapeVehicleFromUrl } from '../lib/geminiScrape';
+import { scrapeVehicleHtmlFromUrl } from '../lib/htmlScrape';
 
 interface Props {
   initial?: Vehicle;
@@ -28,6 +29,8 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [aiError, setAiError] = useState('');
+  const [htmlStatus, setHtmlStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [htmlError, setHtmlError] = useState('');
   const [photoBlocked, setPhotoBlocked] = useState(false);
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
@@ -53,6 +56,26 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
     }));
     setAiStatus('idle');
+  }
+
+  async function handleHtmlFill() {
+    if (!v.listingUrl.trim()) return;
+    setHtmlStatus('loading');
+    setHtmlError('');
+    const result = await scrapeVehicleHtmlFromUrl(v.listingUrl.trim());
+    if (!result.ok) {
+      setHtmlStatus('error');
+      setHtmlError(result.error);
+      return;
+    }
+    const { specs, pricing, ...rest } = result.data;
+    setV(prev => ({
+      ...prev,
+      ...rest,
+      specs: specs ? { ...prev.specs, ...specs } : prev.specs,
+      pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
+    }));
+    setHtmlStatus('idle');
   }
 
   return (
@@ -131,7 +154,8 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
         {/* Listing URL + AI Fill */}
         <Field label="Listing URL">
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
               className="input"
               type="url"
@@ -150,9 +174,23 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
             >
               {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill'}
             </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={!v.listingUrl.trim() || htmlStatus === 'loading'}
+              onClick={handleHtmlFill}
+              title="Use a plain HTML scrape to try filling from this URL without Gemini"
+              style={{ whiteSpace: 'nowrap' }}
+            >
+              {htmlStatus === 'loading' ? 'Scraping…' : '⬇ HTML Fill'}
+            </button>
+            </div>
           </div>
           {aiStatus === 'error' && (
             <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{aiError}</div>
+          )}
+          {htmlStatus === 'error' && (
+            <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{htmlError}</div>
           )}
         </Field>
 

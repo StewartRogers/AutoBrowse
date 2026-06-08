@@ -2,11 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import type { Vehicle } from './data';
 
 
-const EXTRACT_PROMPT = `You are extracting car details from a webpage. The page may be a dealer listing
-(specific car for sale) or a manufacturer model page (spec sheet for a model line).
+const EXTRACT_PROMPT = `You are a car data expert. Given a URL, identify the vehicle and return its details
+using your training knowledge of that model. The URL may be a manufacturer model page or a dealer listing.
 
 Return ONLY a valid JSON object — no markdown fences, no explanation.
-Omit any field you cannot find on the page. Never fabricate or guess values.
+Omit any field you are not confident about. Never fabricate values you don't know.
 
 UNITS: All values must be in Canadian/metric units:
 - Range / distance → kilometres (km)
@@ -104,7 +104,6 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
       model,
       contents: `${EXTRACT_PROMPT}\n\nURL: ${url}`,
       config: {
-        tools: [{ urlContext: {} }, { googleSearch: {} }],
         temperature: 0,
       },
     });
