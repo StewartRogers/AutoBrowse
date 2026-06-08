@@ -2,7 +2,11 @@ import { GoogleGenAI } from '@google/genai';
 import type { Vehicle } from './data';
 
 const EXTRACT_PROMPT = `You are extracting car listing details from the webpage at this URL.
-Return ONLY a valid JSON object (no markdown, no explanation) with these fields — omit any you cannot find:
+Return ONLY a valid JSON object (no markdown fences, no explanation).
+Omit any field you cannot find — do not guess or fabricate values.
+
+For photoUrl: use the og:image meta tag URL if present; otherwise use the src of the
+largest/primary vehicle photo on the page. Always return a fully-qualified absolute URL.
 
 {
   "make": "string",
@@ -13,26 +17,30 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields 
   "bodyStyle": "Sedan" | "Coupe" | "Hatchback" | "SUV" | "Crossover" | "Truck" | "Minivan" | "Wagon",
   "condition": "New" | "Used" | "CPO",
   "mileage": 0,
-  "color": "string",
-  "dealer": "string",
-  "photoUrl": "absolute URL of the primary vehicle photo",
+  "color": "string (exterior color name)",
+  "dealer": "string (dealership name)",
+  "photoUrl": "string (absolute URL)",
   "pricing": {
     "msrp": 0,
     "sellingPrice": 0
   },
   "specs": {
-    "engine": "string",
+    "engine": "string (e.g. '2.0L 4-Cyl Turbo' or '150kW Permanent Magnet Motor')",
     "horsepower": 0,
     "torque": 0,
-    "transmission": "string",
-    "drivetrain": "string",
+    "transmission": "string (e.g. 'CVT' or '10-Speed Automatic')",
+    "drivetrain": "string (e.g. 'AWD', 'FWD', 'RWD')",
     "mpgCombined": 0,
     "mpge": 0,
     "evRange": 0,
     "batteryKwh": 0,
     "seating": 0,
     "cargoCuFt": 0,
-    "towingLbs": 0
+    "towingLbs": 0,
+    "lengthIn": 0,
+    "legroomFront": 0,
+    "legroomRear": 0,
+    "groundClear": 0
   }
 }`;
 
@@ -71,7 +79,8 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
     });
 
     const text = response.text ?? '';
-    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    // Strip markdown fences if the model wraps anyway
+    const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { ok: false, error: 'Gemini returned no JSON. The listing page may block scrapers.' };
 
     const raw = JSON.parse(jsonMatch[0]);
@@ -87,8 +96,8 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
     if (raw.condition)  data.condition  = raw.condition;
     if (raw.mileage)    data.mileage    = Number(raw.mileage);
     if (raw.color)      data.color      = raw.color;
-    if (raw.dealer)    data.dealer    = raw.dealer;
-    if (raw.photoUrl)  data.photoUrl  = raw.photoUrl;
+    if (raw.dealer)     data.dealer     = raw.dealer;
+    if (raw.photoUrl)   data.photoUrl   = raw.photoUrl;
     if (raw.pricing) {
       data.pricing = {
         msrp: Number(raw.pricing.msrp) || 0,
@@ -99,18 +108,22 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
     if (raw.specs) {
       data.specs = {};
       const s = raw.specs;
-      if (s.engine)       data.specs.engine       = s.engine;
-      if (s.horsepower)   data.specs.horsepower   = Number(s.horsepower);
-      if (s.torque)       data.specs.torque       = Number(s.torque);
-      if (s.transmission) data.specs.transmission = s.transmission;
-      if (s.drivetrain)   data.specs.drivetrain   = s.drivetrain;
-      if (s.mpgCombined)  data.specs.mpgCombined  = Number(s.mpgCombined);
-      if (s.mpge)         data.specs.mpge         = Number(s.mpge);
-      if (s.evRange)      data.specs.evRange      = Number(s.evRange);
-      if (s.batteryKwh)   data.specs.batteryKwh   = Number(s.batteryKwh);
-      if (s.seating)      data.specs.seating      = Number(s.seating);
-      if (s.cargoCuFt)    data.specs.cargoCuFt    = Number(s.cargoCuFt);
-      if (s.towingLbs)    data.specs.towingLbs    = Number(s.towingLbs);
+      if (s.engine)        data.specs.engine        = s.engine;
+      if (s.horsepower)    data.specs.horsepower    = Number(s.horsepower);
+      if (s.torque)        data.specs.torque        = Number(s.torque);
+      if (s.transmission)  data.specs.transmission  = s.transmission;
+      if (s.drivetrain)    data.specs.drivetrain    = s.drivetrain;
+      if (s.mpgCombined)   data.specs.mpgCombined   = Number(s.mpgCombined);
+      if (s.mpge)          data.specs.mpge          = Number(s.mpge);
+      if (s.evRange)       data.specs.evRange       = Number(s.evRange);
+      if (s.batteryKwh)    data.specs.batteryKwh    = Number(s.batteryKwh);
+      if (s.seating)       data.specs.seating       = Number(s.seating);
+      if (s.cargoCuFt)     data.specs.cargoCuFt     = Number(s.cargoCuFt);
+      if (s.towingLbs)     data.specs.towingLbs     = Number(s.towingLbs);
+      if (s.lengthIn)      data.specs.lengthIn      = Number(s.lengthIn);
+      if (s.legroomFront)  data.specs.legroomFront  = Number(s.legroomFront);
+      if (s.legroomRear)   data.specs.legroomRear   = Number(s.legroomRear);
+      if (s.groundClear)   data.specs.groundClear   = Number(s.groundClear);
     }
 
     return { ok: true, data };
