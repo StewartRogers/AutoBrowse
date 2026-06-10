@@ -71,6 +71,7 @@ src of the largest primary vehicle hero image. Always return a fully-qualified a
     "chargeTimeDCMins": 0,
     "seating": 0,
     "cargoL": 0,
+    "cargoLSeatsDown": 0,
     "towingKg": 0,
     "lengthCm": 0,
     "legroomFront": 0,
@@ -135,6 +136,7 @@ Use Canadian/metric units:
     "chargeTimeDCMins": 0,
     "seating": 0,
     "cargoL": 0,
+    "cargoLSeatsDown": 0,
     "towingKg": 0,
     "lengthCm": 0,
     "legroomFront": 0,
@@ -223,6 +225,7 @@ export async function lookupVehicleSpecs(
       if (s.chargeTimeDCMins)   result.specs.chargeTimeDCMins   = Number(s.chargeTimeDCMins);
       if (s.seating)            result.specs.seating            = Number(s.seating);
       if (s.cargoL)             result.specs.cargoL             = Number(s.cargoL);
+      if (s.cargoLSeatsDown)    result.specs.cargoLSeatsDown    = Number(s.cargoLSeatsDown);
       if (s.towingKg)           result.specs.towingKg           = Number(s.towingKg);
       if (s.lengthCm)           result.specs.lengthCm           = Number(s.lengthCm);
       if (s.legroomFront)       result.specs.legroomFront       = Number(s.legroomFront);

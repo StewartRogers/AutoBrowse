@@ -25,6 +25,7 @@ export interface SpecFields {
   chargeTimeDCMins?: number;
   seating?: number;
   cargoL?: number;
+  cargoLSeatsDown?: number;
   towingKg?: number;
   lengthCm?: number;
   legroomFront?: number;
@@ -182,8 +183,9 @@ export const SPEC_FIELDS: SpecFieldDef[] = [
   { key: 'chargeTimeLvl2Hr',  label: 'Charge Time (L2, full)', group: 'Efficiency',   unit: 'hr',       better: 'low',  evOnly: true },
   { key: 'chargeTimeDCMins',  label: 'DC Fast Charge (80%)',   group: 'Efficiency',   unit: 'min',      better: 'low',  evOnly: true },
   { key: 'seating',      label: 'Seating',           group: 'Practicality', unit: 'seats',    better: 'high' },
-  { key: 'cargoL',       label: 'Cargo',             group: 'Practicality', unit: 'L',        better: 'high' },
-  { key: 'towingKg',     label: 'Towing',            group: 'Practicality', unit: 'kg',       better: 'high' },
+  { key: 'cargoL',          label: 'Cargo (seats up)',   group: 'Practicality', unit: 'L',  better: 'high' },
+  { key: 'cargoLSeatsDown', label: 'Cargo (seats down)', group: 'Practicality', unit: 'L',  better: 'high' },
+  { key: 'towingKg',        label: 'Towing',             group: 'Practicality', unit: 'kg', better: 'high' },
   { key: 'lengthCm',     label: 'Length',            group: 'Dimensions',   unit: 'cm' },
   { key: 'legroomFront',   label: 'Front Legroom',    group: 'Comfort',      unit: 'cm',       better: 'high' },
   { key: 'legroomRear',   label: 'Rear Legroom',     group: 'Comfort',      unit: 'cm',       better: 'high' },
