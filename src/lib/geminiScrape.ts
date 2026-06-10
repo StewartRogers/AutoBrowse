@@ -253,7 +253,7 @@ export type ScrapeResult = {
 export function getGeminiConfig(): { apiKey: string; model: string } {
   return {
     apiKey: import.meta.env.VITE_GEMINI_API_KEY ?? '',
-    model:  import.meta.env.VITE_GEMINI_MODEL  || 'gemini-2.0-flash-lite',
+    model:  import.meta.env.VITE_GEMINI_MODEL  || 'gemini-3.1-flash-lite',
   };
 }
 
