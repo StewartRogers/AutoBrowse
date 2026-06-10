@@ -11,7 +11,7 @@ import VehicleForm from './features/VehicleForm';
 import type { Vehicle } from './lib/data';
 
 export default function App() {
-  const { addVehicle, replaceVehicle, init, hydrated } = useStore();
+  const { replaceVehicle, init, hydrated } = useStore();
 
   useEffect(() => { init(); }, [init]);
   const [formOpen, setFormOpen] = useState(false);
@@ -21,12 +21,9 @@ export default function App() {
   const openEdit = (v: Vehicle) => { setEditing(v); setFormOpen(true); };
   const closeForm = () => { setFormOpen(false); setEditing(null); };
 
+  // Edit mode only — add mode creates the vehicle itself and never calls onSave.
   const handleSave = (v: Vehicle) => {
-    if (editing) {
-      replaceVehicle(editing.id, v);
-    } else {
-      addVehicle(v);
-    }
+    if (editing) replaceVehicle(editing.id, v);
     closeForm();
   };
 

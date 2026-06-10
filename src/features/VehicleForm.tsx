@@ -42,7 +42,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
   // Add-mode state
   const [creating, setCreating] = useState(false);
-  const [createStatus, setCreateStatus] = useState('');
+  const [createError, setCreateError] = useState('');
 
   // Edit-mode state
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
@@ -62,38 +62,51 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   if (!initial) {
     const canCreate = v.make.trim().length > 0 && v.model.trim().length > 0;
 
+    function addAndOpen(patch: Partial<Vehicle> = {}) {
+      const id = storeAdd({ make: v.make.trim(), model: v.model.trim(), year: v.year, trim: v.trim.trim() });
+      if (Object.keys(patch).length) updateVehicle(id, patch);
+      onClose();
+      navigate(`/vehicle/${id}`);
+    }
+
     async function handleCreate() {
       if (!canCreate || creating) return;
       setCreating(true);
-      setCreateStatus('Looking up specs…');
+      setCreateError('');
 
-      const id = storeAdd({ make: v.make, model: v.model, year: v.year, trim: v.trim });
-
+      // Look up specs before creating, so a failed lookup doesn't leave an
+      // orphan vehicle behind if the user cancels instead of retrying.
       const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
-      if (result.ok) {
-        const { specs, features, powertrain, bodyStyle } = result.data;
-        updateVehicle(id, {
-          ...(powertrain ? { powertrain } : {}),
-          ...(bodyStyle  ? { bodyStyle  } : {}),
-          specs,
-          ...(features   ? { features   } : {}),
-        });
+      if (!result.ok) {
+        setCreating(false);
+        setCreateError(result.error);
+        return;
       }
 
-      onClose();
-      navigate(`/vehicle/${id}`);
+      const { specs, features, powertrain, bodyStyle } = result.data;
+      addAndOpen({
+        ...(powertrain ? { powertrain } : {}),
+        ...(bodyStyle  ? { bodyStyle  } : {}),
+        specs,
+        ...(features   ? { features   } : {}),
+      });
     }
 
     return (
       <Modal
         title="Add a vehicle"
-        onClose={creating ? undefined : onClose}
+        onClose={() => { if (!creating) onClose(); }}
         width={420}
         footer={
           <>
             <button className="btn btn-secondary" onClick={onClose} disabled={creating}>Cancel</button>
+            {createError && (
+              <button className="btn btn-secondary" disabled={creating} onClick={() => addAndOpen()}>
+                Add without specs
+              </button>
+            )}
             <button className="btn btn-primary" disabled={!canCreate || creating} onClick={handleCreate}>
-              {creating ? createStatus : 'Add to Garage'}
+              {creating ? 'Looking up specs…' : createError ? 'Retry AI lookup' : 'Add to Garage'}
             </button>
           </>
         }
@@ -137,11 +150,17 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
               />
             </Field>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--ink-faint)', textAlign: 'center', lineHeight: 1.5 }}>
-            {creating
-              ? createStatus
-              : 'AI will fill specs and features automatically — pricing and photos can be added after.'}
-          </div>
+          {createError ? (
+            <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', textAlign: 'center', lineHeight: 1.5 }}>
+              {createError}
+            </div>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--ink-faint)', textAlign: 'center', lineHeight: 1.5 }}>
+              {creating
+                ? 'Looking up specs…'
+                : 'AI will fill specs and features automatically — pricing and photos can be added after.'}
+            </div>
+          )}
         </div>
       </Modal>
     );

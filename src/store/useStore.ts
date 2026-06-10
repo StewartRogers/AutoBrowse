@@ -75,14 +75,11 @@ export interface AppState {
 
   // Matrix actions
   setMatrix: (matrix: MatrixFactor[]) => void;
-
-  // Reset
-  resetAll: () => Promise<void>;
 }
 
 // ─── Store ───────────────────────────────────────────────────────────────────
 
-export const useStore = create<AppState>()((set, get) => ({
+export const useStore = create<AppState>()((set) => ({
   vehicles: [],
   matrix: DEFAULT_MATRIX,
   compareIds: [],
@@ -248,10 +245,4 @@ export const useStore = create<AppState>()((set, get) => ({
     api.saveMatrix(matrix);
   },
 
-  async resetAll() {
-    const current = get().vehicles;
-    await Promise.all(current.map(v => fetch(`/api/vehicles/${v.id}`, { method: 'DELETE' })));
-    set({ vehicles: [], matrix: DEFAULT_MATRIX, compareIds: [] });
-    api.saveMatrix(DEFAULT_MATRIX);
-  },
 }));
