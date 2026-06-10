@@ -6,7 +6,7 @@ import { create } from 'zustand';
 import {
   type Vehicle, type MatrixFactor,
   blankVehicle, deepMerge, uid,
-  SEED_VEHICLES, DEFAULT_MATRIX,
+  DEFAULT_MATRIX,
 } from '../lib/data';
 
 // ─── API helpers ─────────────────────────────────────────────────────────────
@@ -88,8 +88,6 @@ export const useStore = create<AppState>()((set, get) => ({
   compareIds: [],
   hydrated: false,
 
-  // Load vehicles and matrix from SQLite via the Express API.
-  // If the DB is empty (first run), seed with demo vehicles.
   async init() {
     try {
       const [vehicles, matrix] = await Promise.all([
@@ -97,30 +95,14 @@ export const useStore = create<AppState>()((set, get) => ({
         api.getMatrix(),
       ]);
 
-      let finalVehicles = vehicles;
-
-      if (finalVehicles.length === 0) {
-        // First run — seed the DB
-        finalVehicles = SEED_VEHICLES();
-        await Promise.all(
-          finalVehicles.map(v =>
-            fetch('/api/vehicles', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(v),
-            })
-          )
-        );
-      }
-
       const finalMatrix = matrix ?? DEFAULT_MATRIX;
-      const defaultCompare = finalVehicles
+      const defaultCompare = vehicles
         .filter(v => !v.archived)
         .slice(0, 3)
         .map(v => v.id);
 
       set({
-        vehicles: finalVehicles,
+        vehicles,
         matrix: finalMatrix,
         compareIds: defaultCompare,
         hydrated: true,
@@ -267,21 +249,9 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   async resetAll() {
-    // Delete everything from the DB then reseed
     const current = get().vehicles;
     await Promise.all(current.map(v => fetch(`/api/vehicles/${v.id}`, { method: 'DELETE' })));
-    const fresh = SEED_VEHICLES();
-    await Promise.all(
-      fresh.map(v =>
-        fetch('/api/vehicles', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(v),
-        })
-      )
-    );
-    const defaultCompare = fresh.filter(v => !v.archived).slice(0, 3).map(v => v.id);
-    set({ vehicles: fresh, matrix: DEFAULT_MATRIX, compareIds: defaultCompare });
+    set({ vehicles: [], matrix: DEFAULT_MATRIX, compareIds: [] });
     api.saveMatrix(DEFAULT_MATRIX);
   },
 }));

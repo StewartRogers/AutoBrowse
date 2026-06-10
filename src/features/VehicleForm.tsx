@@ -1,15 +1,17 @@
 // Add / edit vehicle modal
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import Field from '../components/Field';
 import Segmented from '../components/Segmented';
 import { blankVehicle, BODY_STYLES, ACCENT_PALETTE, type Vehicle, type Powertrain, type Condition, type PricingMode } from '../lib/data';
 import { scrapeVehicleFromUrl, lookupVehicleSpecs } from '../lib/geminiScrape';
 import { scrapeVehicleHtmlFromUrl } from '../lib/htmlScrape';
+import { useStore } from '../store/useStore';
 
 interface Props {
   initial?: Vehicle;
-  onSave: (v: Vehicle) => void;
+  onSave: (v: Vehicle) => void;  // edit mode only
   onClose: () => void;
 }
 
@@ -32,7 +34,17 @@ const PM_OPTIONS = [
 ];
 
 export default function VehicleForm({ initial, onSave, onClose }: Props) {
+  // Hooks must all be called unconditionally before any early return
+  const navigate = useNavigate();
+  const { addVehicle: storeAdd, updateVehicle } = useStore();
+
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
+
+  // Add-mode state
+  const [creating, setCreating] = useState(false);
+  const [createStatus, setCreateStatus] = useState('');
+
+  // Edit-mode state
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [aiError, setAiError] = useState('');
   const [aiLog, setAiLog] = useState('');
@@ -45,6 +57,97 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
   const setPricing = (patch: Partial<Vehicle['pricing']>) => setV(prev => ({ ...prev, pricing: { ...prev.pricing, ...patch } }));
+
+  // ── ADD MODE ───────────────────────────────────────────────────────────────
+  if (!initial) {
+    const canCreate = v.make.trim().length > 0 && v.model.trim().length > 0;
+
+    async function handleCreate() {
+      if (!canCreate || creating) return;
+      setCreating(true);
+      setCreateStatus('Looking up specs…');
+
+      const id = storeAdd({ make: v.make, model: v.model, year: v.year, trim: v.trim });
+
+      const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
+      if (result.ok) {
+        const { specs, features, powertrain, bodyStyle } = result.data;
+        updateVehicle(id, {
+          ...(powertrain ? { powertrain } : {}),
+          ...(bodyStyle  ? { bodyStyle  } : {}),
+          specs,
+          ...(features   ? { features   } : {}),
+        });
+      }
+
+      onClose();
+      navigate(`/vehicle/${id}`);
+    }
+
+    return (
+      <Modal
+        title="Add a vehicle"
+        onClose={creating ? undefined : onClose}
+        width={420}
+        footer={
+          <>
+            <button className="btn btn-secondary" onClick={onClose} disabled={creating}>Cancel</button>
+            <button className="btn btn-primary" disabled={!canCreate || creating} onClick={handleCreate}>
+              {creating ? createStatus : 'Add to Garage'}
+            </button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Make" required>
+              <input
+                className="input"
+                autoFocus
+                value={v.make}
+                onChange={e => setV(p => ({ ...p, make: e.target.value }))}
+                placeholder="Honda"
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              />
+            </Field>
+            <Field label="Model" required>
+              <input
+                className="input"
+                value={v.model}
+                onChange={e => setV(p => ({ ...p, model: e.target.value }))}
+                placeholder="Accord"
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              />
+            </Field>
+            <Field label="Year">
+              <input
+                className="input num"
+                type="number"
+                value={v.year}
+                onChange={e => setV(p => ({ ...p, year: Number(e.target.value) }))}
+              />
+            </Field>
+            <Field label="Trim">
+              <input
+                className="input"
+                value={v.trim}
+                onChange={e => setV(p => ({ ...p, trim: e.target.value }))}
+                placeholder="Hybrid Touring"
+                onKeyDown={e => e.key === 'Enter' && handleCreate()}
+              />
+            </Field>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--ink-faint)', textAlign: 'center', lineHeight: 1.5 }}>
+            {creating
+              ? createStatus
+              : 'AI will fill specs and features automatically — pricing and photos can be added after.'}
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
+  // ── EDIT MODE (full form) ──────────────────────────────────────────────────
 
   const canSave = v.make.trim().length > 0 && v.model.trim().length > 0;
 
@@ -69,8 +172,8 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     }));
     const identityKeys = ['make', 'model', 'year', 'trim', 'powertrain', 'bodyStyle', 'color', 'dealer'];
     const filled = identityKeys.filter(k => (rest as Record<string, unknown>)[k]);
-    const s = specs ? Object.values(specs).filter(v => v !== undefined && v !== null && v !== '').length : 0;
-    const f = features ? Object.values(features).filter(v => v !== undefined).length : 0;
+    const s = specs ? Object.values(specs).filter(x => x !== undefined && x !== null && x !== '').length : 0;
+    const f = features ? Object.values(features).filter(x => x !== undefined).length : 0;
     const parts = [...(filled.length ? [filled.join(', ')] : []), ...(s ? [`${s} specs`] : []), ...(f ? [`${f} features`] : [])];
     setAiLog(parts.length ? `✓ Filled: ${parts.join(' + ')}` : 'No data returned from this URL.');
     setAiStatus('idle');
@@ -126,15 +229,13 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
   return (
     <Modal
-      title={initial ? `Edit ${v.year} ${v.make} ${v.model}` : 'Log a vehicle'}
+      title={`Edit ${v.year} ${v.make} ${v.model}`}
       onClose={onClose}
       width={600}
       footer={
         <>
           <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" disabled={!canSave} onClick={() => onSave(v)}>
-            {initial ? 'Save changes' : 'Add to garage'}
-          </button>
+          <button className="btn btn-primary" disabled={!canSave} onClick={() => onSave(v)}>Save changes</button>
         </>
       }
     >
@@ -165,7 +266,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           </Field>
         </div>
 
-        {/* AI Specs Lookup — no URL required */}
+        {/* AI Specs Lookup */}
         <div>
           <button
             className="btn btn-secondary"
@@ -229,34 +330,34 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
         <Field label="Listing URL">
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <input
-              className="input"
-              type="url"
-              value={v.listingUrl}
-              onChange={e => set({ listingUrl: e.target.value })}
-              placeholder="https://..."
-              style={{ flex: 1 }}
-            />
-            <button
-              className="btn btn-secondary"
-              type="button"
-              disabled={!v.listingUrl.trim() || aiStatus === 'loading'}
-              onClick={handleAiFill}
-              title="Use Gemini AI to fill in details from this URL"
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill from URL'}
-            </button>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              disabled={!v.listingUrl.trim() || htmlStatus === 'loading'}
-              onClick={handleHtmlFill}
-              title="Use a plain HTML scrape to try filling from this URL without Gemini"
-              style={{ whiteSpace: 'nowrap' }}
-            >
-              {htmlStatus === 'loading' ? 'Scraping…' : '⬇ HTML Fill'}
-            </button>
+              <input
+                className="input"
+                type="url"
+                value={v.listingUrl}
+                onChange={e => set({ listingUrl: e.target.value })}
+                placeholder="https://..."
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={!v.listingUrl.trim() || aiStatus === 'loading'}
+                onClick={handleAiFill}
+                title="Use Gemini AI to fill in details from this URL"
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill from URL'}
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={!v.listingUrl.trim() || htmlStatus === 'loading'}
+                onClick={handleHtmlFill}
+                title="Use a plain HTML scrape to try filling from this URL without Gemini"
+                style={{ whiteSpace: 'nowrap' }}
+              >
+                {htmlStatus === 'loading' ? 'Scraping…' : '⬇ HTML Fill'}
+              </button>
             </div>
           </div>
           {aiStatus === 'error' && (
@@ -270,7 +371,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           )}
         </Field>
 
-        {/* Photo preview — shown after AI Fill captures a photoUrl */}
+        {/* Photo preview */}
         {v.photoUrl && (
           <Field label="Photo">
             <div style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)', minHeight: 48 }}>
