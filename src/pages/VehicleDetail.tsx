@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
-  SPEC_FIELDS, RATING_CATS, TESTDRIVE_CATS,
+  SPEC_FIELDS, FEATURE_FIELDS, RATING_CATS, TESTDRIVE_CATS,
   financeCalc, leaseCalc, ownershipCalc, outTheDoor, avgRating,
   type Vehicle,
 } from '../lib/data';
@@ -118,10 +118,17 @@ function OverviewTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) 
 
 // ── Specifications tab ────────────────────────────────────────────────────────
 function SpecsTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => void }) {
-  const groups = [...new Set(SPEC_FIELDS.map(f => f.group))];
+  const specGroups = [...new Set(SPEC_FIELDS.map(f => f.group))];
+  const featureGroups = [...new Set(FEATURE_FIELDS.map(f => f.group))];
+  const features = v.features ?? {};
+
+  const setFeature = (key: string, val: unknown) =>
+    update({ features: { ...features, [key]: val } });
+
   return (
     <div className={styles.tabContent}>
-      {groups.map(group => {
+      {/* Numeric specs */}
+      {specGroups.map(group => {
         const fields = SPEC_FIELDS.filter(f => {
           if (f.evOnly && v.powertrain !== 'ev') return false;
           if (f.evHide && v.powertrain === 'ev') return false;
@@ -141,6 +148,48 @@ function SpecsTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
                   }
                 </div>
               ))}
+            </div>
+          </div>
+        );
+      })}
+
+      {/* Feature flags */}
+      {featureGroups.map(group => {
+        const fields = FEATURE_FIELDS.filter(f => f.group === group);
+        return (
+          <div key={group} className={styles.specGroup}>
+            <SectionLabel>{group}</SectionLabel>
+            <div className={styles.specRows}>
+              {fields.map(f => {
+                const val = (features as Record<string, unknown>)[f.key];
+                return (
+                  <div key={f.key} className={styles.specRow}>
+                    <div className={styles.specLabel}>{f.label}</div>
+                    {f.type === 'boolean' ? (
+                      <select
+                        className="input select"
+                        style={{ maxWidth: 120 }}
+                        value={val === undefined ? '' : val ? 'yes' : 'no'}
+                        onChange={e => setFeature(f.key, e.target.value === '' ? undefined : e.target.value === 'yes')}
+                      >
+                        <option value="">—</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    ) : (
+                      <select
+                        className="input select"
+                        style={{ maxWidth: 200 }}
+                        value={(val as string) ?? ''}
+                        onChange={e => setFeature(f.key, e.target.value === '' ? null : e.target.value)}
+                      >
+                        <option value="">—</option>
+                        {f.options?.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         );

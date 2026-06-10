@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
-  SPEC_FIELDS, RATING_CATS, TESTDRIVE_CATS,
+  SPEC_FIELDS, FEATURE_FIELDS, RATING_CATS, TESTDRIVE_CATS,
   financeCalc, leaseCalc, ownershipCalc, outTheDoor,
   type Vehicle,
 } from '../lib/data';
@@ -26,7 +26,7 @@ const RANK_OPTIONS: { value: RankBy; label: string }[] = [
   { value: 'power', label: 'Most power' },
 ];
 
-const SECTIONS = ['Specifications', 'Your Ratings', 'Test Drive', 'Pricing', 'Finance', 'Lease', 'Cost to Own'] as const;
+const SECTIONS = ['Specifications', 'Features', 'Your Ratings', 'Test Drive', 'Pricing', 'Finance', 'Lease', 'Cost to Own'] as const;
 type Section = typeof SECTIONS[number];
 
 // ── Cell best-in-row highlight logic ─────────────────────────────────────────
@@ -122,6 +122,30 @@ function buildRows(vehicles: Vehicle[], activeSections: Set<Section>): CompareRo
     });
   }
 
+  if (activeSections.has('Features')) {
+    FEATURE_FIELDS.forEach(f => {
+      const values = vehicles.map(v => {
+        const val = (v.features ?? {} as Record<string, unknown>)[f.key];
+        if (val === undefined) return undefined;
+        if (f.type === 'boolean') return val === true ? 'Yes' : val === false ? 'No' : undefined;
+        if (val === null) return undefined;
+        const opt = f.options?.find(o => o.value === val);
+        return opt ? opt.label : String(val);
+      });
+      if (values.every(v => v === undefined)) return;
+      rows.push({
+        label: f.label,
+        section: 'Features',
+        values,
+        renderCell: (val) => (
+          <span style={{ color: val === 'No' ? 'var(--ink-faint)' : val === 'Yes' ? 'var(--good, #4a7a52)' : undefined }}>
+            {val !== undefined ? String(val) : '—'}
+          </span>
+        ),
+      });
+    });
+  }
+
   if (activeSections.has('Your Ratings')) {
     RATING_CATS.forEach(cat => {
       const values = vehicles.map(v => v.ratings[cat.key] || 0);
@@ -197,7 +221,7 @@ export default function Compare() {
   const allVehicles = useStore(s => s.vehicles);
   const { compareIds, toggleCompare, setCompareIds } = useStore();
   const [rankBy, setRankBy] = useState<RankBy>('selected');
-  const [activeSections, setActiveSections] = useState<Set<Section>>(new Set(['Specifications', 'Your Ratings', 'Pricing', 'Finance']));
+  const [activeSections, setActiveSections] = useState<Set<Section>>(new Set(['Specifications', 'Features', 'Your Ratings', 'Pricing', 'Finance']));
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const activeVehicles = allVehicles.filter(v => !v.archived);

@@ -56,12 +56,13 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       setAiError(result.error);
       return;
     }
-    const { specs, pricing, ...rest } = result.data;
+    const { specs, pricing, features, ...rest } = result.data;
     setV(prev => ({
       ...prev,
       ...rest,
       specs: specs ? { ...prev.specs, ...specs } : prev.specs,
       pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
+      features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
     }));
     setAiStatus('idle');
   }
@@ -76,12 +77,13 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       setSpecsError(result.error);
       return;
     }
-    const { specs, powertrain, bodyStyle } = result.data;
+    const { specs, features, powertrain, bodyStyle } = result.data;
     setV(prev => ({
       ...prev,
       ...(powertrain ? { powertrain } : {}),
       ...(bodyStyle  ? { bodyStyle  } : {}),
       specs: { ...prev.specs, ...specs },
+      features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
     }));
     setSpecsStatus('idle');
   }

@@ -1,5 +1,5 @@
 import { GoogleGenAI } from '@google/genai';
-import type { Vehicle } from './data';
+import type { Vehicle, Features } from './data';
 
 
 const EXTRACT_PROMPT = `You are a car data expert. Given a URL, identify the vehicle and return its details
@@ -62,18 +62,45 @@ src of the largest primary vehicle hero image. Always return a fully-qualified a
     "transmission": "string",
     "drivetrain": "string",
     "fuelL100km": 0,
+    "fuelL100kmCity": 0,
+    "fuelL100kmHwy": 0,
     "mpge": 0,
     "evRange": 0,
     "batteryKwh": 0,
+    "chargeTimeLvl2Hr": 0,
+    "chargeTimeDCMins": 0,
     "seating": 0,
     "cargoL": 0,
     "towingKg": 0,
     "lengthCm": 0,
     "legroomFront": 0,
     "legroomRear": 0,
+    "rearHeadroomCm": 0,
     "groundClear": 0
+  },
+
+  "features": {
+    "heatedSeats": "front" | "front+rear" | null,
+    "cooledSeats": "front" | "front+rear" | null,
+    "heatedSteeringWheel": true | false,
+    "powerSeats": "driver" | "both" | null,
+    "interiorMaterial": "cloth" | "leatherette" | "leather" | null,
+    "sunroof": true | false,
+    "thirdRow": true | false,
+    "rearClimateControls": true | false,
+    "rearVents": true | false,
+    "frontWirelessCharging": true | false,
+    "frontPluginCharging": true | false,
+    "rearWirelessCharging": true | false,
+    "rearPluginCharging": true | false,
+    "blindspotMonitor": true | false,
+    "backupCamera": true | false,
+    "powerFoldingMirrors": true | false,
+    "roofRack": true | false
   }
-}`;
+}
+
+FEATURES: Return features that are standard (included) on this specific trim. Return false for features that are definitely not available. Omit features you are unsure about.`;
 
 const SPECS_PROMPT = `You are an automotive data expert with deep knowledge of vehicle specifications.
 Given a vehicle's year, make, model, and trim, return its technical specifications.
@@ -99,22 +126,49 @@ Use Canadian/metric units:
     "transmission": "string",
     "drivetrain": "string",
     "fuelL100km": 0,
+    "fuelL100kmCity": 0,
+    "fuelL100kmHwy": 0,
     "mpge": 0,
     "evRange": 0,
     "batteryKwh": 0,
+    "chargeTimeLvl2Hr": 0,
+    "chargeTimeDCMins": 0,
     "seating": 0,
     "cargoL": 0,
     "towingKg": 0,
     "lengthCm": 0,
     "legroomFront": 0,
     "legroomRear": 0,
+    "rearHeadroomCm": 0,
     "groundClear": 0
+  },
+
+  "features": {
+    "heatedSeats": "front" | "front+rear" | null,
+    "cooledSeats": "front" | "front+rear" | null,
+    "heatedSteeringWheel": true | false,
+    "powerSeats": "driver" | "both" | null,
+    "interiorMaterial": "cloth" | "leatherette" | "leather" | null,
+    "sunroof": true | false,
+    "thirdRow": true | false,
+    "rearClimateControls": true | false,
+    "rearVents": true | false,
+    "frontWirelessCharging": true | false,
+    "frontPluginCharging": true | false,
+    "rearWirelessCharging": true | false,
+    "rearPluginCharging": true | false,
+    "blindspotMonitor": true | false,
+    "backupCamera": true | false,
+    "powerFoldingMirrors": true | false,
+    "roofRack": true | false
   }
-}`;
+}
+
+FEATURES: Return features that are standard (included) on this specific trim. Return false for features that are definitely not available. Omit features you are unsure about.`;
 
 export type SpecsLookupResult = {
   ok: true;
-  data: { powertrain?: Vehicle['powertrain']; bodyStyle?: Vehicle['bodyStyle']; specs: Partial<Vehicle['specs']> };
+  data: { powertrain?: Vehicle['powertrain']; bodyStyle?: Vehicle['bodyStyle']; specs: Partial<Vehicle['specs']>; features?: Partial<Features> };
 } | {
   ok: false;
   error: string;
@@ -147,29 +201,38 @@ export async function lookupVehicleSpecs(
     if (!jsonMatch) return { ok: false, error: 'No specs returned. Try entering make/model/year/trim more specifically.' };
 
     const raw = JSON.parse(jsonMatch[0]);
-    const result: SpecsLookupResult['data'] = { specs: {} };
+    const result: Extract<SpecsLookupResult, { ok: true }>['data'] = { specs: {} };
 
     if (raw.powertrain) result.powertrain = raw.powertrain;
     if (raw.bodyStyle)  result.bodyStyle  = raw.bodyStyle;
 
     if (raw.specs) {
       const s = raw.specs;
-      if (s.engine)        result.specs.engine        = s.engine;
-      if (s.horsepower)    result.specs.horsepower    = Number(s.horsepower);
-      if (s.torque)        result.specs.torque        = Number(s.torque);
-      if (s.transmission)  result.specs.transmission  = s.transmission;
-      if (s.drivetrain)    result.specs.drivetrain    = s.drivetrain;
-      if (s.fuelL100km)    result.specs.fuelL100km    = Number(s.fuelL100km);
-      if (s.mpge)          result.specs.mpge          = Number(s.mpge);
-      if (s.evRange)       result.specs.evRange       = Number(s.evRange);
-      if (s.batteryKwh)    result.specs.batteryKwh    = Number(s.batteryKwh);
-      if (s.seating)       result.specs.seating       = Number(s.seating);
-      if (s.cargoL)        result.specs.cargoL        = Number(s.cargoL);
-      if (s.towingKg)      result.specs.towingKg      = Number(s.towingKg);
-      if (s.lengthCm)      result.specs.lengthCm      = Number(s.lengthCm);
-      if (s.legroomFront)  result.specs.legroomFront  = Number(s.legroomFront);
-      if (s.legroomRear)   result.specs.legroomRear   = Number(s.legroomRear);
-      if (s.groundClear)   result.specs.groundClear   = Number(s.groundClear);
+      if (s.engine)             result.specs.engine             = s.engine;
+      if (s.horsepower)         result.specs.horsepower         = Number(s.horsepower);
+      if (s.torque)             result.specs.torque             = Number(s.torque);
+      if (s.transmission)       result.specs.transmission       = s.transmission;
+      if (s.drivetrain)         result.specs.drivetrain         = s.drivetrain;
+      if (s.fuelL100km)         result.specs.fuelL100km         = Number(s.fuelL100km);
+      if (s.fuelL100kmCity)     result.specs.fuelL100kmCity     = Number(s.fuelL100kmCity);
+      if (s.fuelL100kmHwy)      result.specs.fuelL100kmHwy      = Number(s.fuelL100kmHwy);
+      if (s.mpge)               result.specs.mpge               = Number(s.mpge);
+      if (s.evRange)            result.specs.evRange            = Number(s.evRange);
+      if (s.batteryKwh)         result.specs.batteryKwh         = Number(s.batteryKwh);
+      if (s.chargeTimeLvl2Hr)   result.specs.chargeTimeLvl2Hr   = Number(s.chargeTimeLvl2Hr);
+      if (s.chargeTimeDCMins)   result.specs.chargeTimeDCMins   = Number(s.chargeTimeDCMins);
+      if (s.seating)            result.specs.seating            = Number(s.seating);
+      if (s.cargoL)             result.specs.cargoL             = Number(s.cargoL);
+      if (s.towingKg)           result.specs.towingKg           = Number(s.towingKg);
+      if (s.lengthCm)           result.specs.lengthCm           = Number(s.lengthCm);
+      if (s.legroomFront)       result.specs.legroomFront       = Number(s.legroomFront);
+      if (s.legroomRear)        result.specs.legroomRear        = Number(s.legroomRear);
+      if (s.rearHeadroomCm)     result.specs.rearHeadroomCm     = Number(s.rearHeadroomCm);
+      if (s.groundClear)        result.specs.groundClear        = Number(s.groundClear);
+    }
+
+    if (raw.features) {
+      result.features = parseFeatures(raw.features);
     }
 
     return { ok: true, data: result };
@@ -181,7 +244,7 @@ export async function lookupVehicleSpecs(
 
 export type ScrapeResult = {
   ok: true;
-  data: Partial<Vehicle> & { specs?: Partial<Vehicle['specs']> };
+  data: Partial<Vehicle> & { specs?: Partial<Vehicle['specs']>; features?: Partial<Features> };
 } | {
   ok: false;
   error: string;
@@ -271,22 +334,31 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
     if (raw.specs) {
       data.specs = {};
       const s = raw.specs;
-      if (s.engine)        data.specs.engine        = s.engine;
-      if (s.horsepower)    data.specs.horsepower    = Number(s.horsepower);
-      if (s.torque)        data.specs.torque        = Number(s.torque);
-      if (s.transmission)  data.specs.transmission  = s.transmission;
-      if (s.drivetrain)    data.specs.drivetrain    = s.drivetrain;
-      if (s.fuelL100km)    data.specs.fuelL100km    = Number(s.fuelL100km);
-      if (s.mpge)          data.specs.mpge          = Number(s.mpge);
-      if (s.evRange)       data.specs.evRange       = Number(s.evRange);
-      if (s.batteryKwh)    data.specs.batteryKwh    = Number(s.batteryKwh);
-      if (s.seating)       data.specs.seating       = Number(s.seating);
-      if (s.cargoL)        data.specs.cargoL        = Number(s.cargoL);
-      if (s.towingKg)      data.specs.towingKg      = Number(s.towingKg);
-      if (s.lengthCm)      data.specs.lengthCm      = Number(s.lengthCm);
-      if (s.legroomFront)  data.specs.legroomFront  = Number(s.legroomFront);
-      if (s.legroomRear)   data.specs.legroomRear   = Number(s.legroomRear);
-      if (s.groundClear)   data.specs.groundClear   = Number(s.groundClear);
+      if (s.engine)             data.specs.engine             = s.engine;
+      if (s.horsepower)         data.specs.horsepower         = Number(s.horsepower);
+      if (s.torque)             data.specs.torque             = Number(s.torque);
+      if (s.transmission)       data.specs.transmission       = s.transmission;
+      if (s.drivetrain)         data.specs.drivetrain         = s.drivetrain;
+      if (s.fuelL100km)         data.specs.fuelL100km         = Number(s.fuelL100km);
+      if (s.fuelL100kmCity)     data.specs.fuelL100kmCity     = Number(s.fuelL100kmCity);
+      if (s.fuelL100kmHwy)      data.specs.fuelL100kmHwy      = Number(s.fuelL100kmHwy);
+      if (s.mpge)               data.specs.mpge               = Number(s.mpge);
+      if (s.evRange)            data.specs.evRange            = Number(s.evRange);
+      if (s.batteryKwh)         data.specs.batteryKwh         = Number(s.batteryKwh);
+      if (s.chargeTimeLvl2Hr)   data.specs.chargeTimeLvl2Hr   = Number(s.chargeTimeLvl2Hr);
+      if (s.chargeTimeDCMins)   data.specs.chargeTimeDCMins   = Number(s.chargeTimeDCMins);
+      if (s.seating)            data.specs.seating            = Number(s.seating);
+      if (s.cargoL)             data.specs.cargoL             = Number(s.cargoL);
+      if (s.towingKg)           data.specs.towingKg           = Number(s.towingKg);
+      if (s.lengthCm)           data.specs.lengthCm           = Number(s.lengthCm);
+      if (s.legroomFront)       data.specs.legroomFront       = Number(s.legroomFront);
+      if (s.legroomRear)        data.specs.legroomRear        = Number(s.legroomRear);
+      if (s.rearHeadroomCm)     data.specs.rearHeadroomCm     = Number(s.rearHeadroomCm);
+      if (s.groundClear)        data.specs.groundClear        = Number(s.groundClear);
+    }
+
+    if (raw.features) {
+      data.features = parseFeatures(raw.features);
     }
 
     return { ok: true, data };
@@ -294,6 +366,31 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
     const raw = err instanceof Error ? err.message : String(err);
     return { ok: false, error: friendlyError(raw) };
   }
+}
+
+function parseFeatures(f: Record<string, unknown>): Partial<Features> {
+  const out: Partial<Features> = {};
+  const bool = (v: unknown) => v === true || v === 'true';
+  const boolDef = (v: unknown) => v !== undefined && v !== null ? bool(v) : undefined;
+
+  if (f.heatedSeats !== undefined)         out.heatedSeats         = (f.heatedSeats === 'front' || f.heatedSeats === 'front+rear') ? f.heatedSeats : null;
+  if (f.cooledSeats !== undefined)         out.cooledSeats         = (f.cooledSeats === 'front' || f.cooledSeats === 'front+rear') ? f.cooledSeats : null;
+  if (f.heatedSteeringWheel !== undefined) out.heatedSteeringWheel = boolDef(f.heatedSteeringWheel);
+  if (f.powerSeats !== undefined)          out.powerSeats          = (f.powerSeats === 'driver' || f.powerSeats === 'both') ? f.powerSeats : null;
+  if (f.interiorMaterial !== undefined)    out.interiorMaterial    = (['cloth', 'leatherette', 'leather'] as const).includes(f.interiorMaterial as 'cloth') ? f.interiorMaterial as Features['interiorMaterial'] : null;
+  if (f.sunroof !== undefined)             out.sunroof             = boolDef(f.sunroof);
+  if (f.thirdRow !== undefined)            out.thirdRow            = boolDef(f.thirdRow);
+  if (f.rearClimateControls !== undefined) out.rearClimateControls = boolDef(f.rearClimateControls);
+  if (f.rearVents !== undefined)           out.rearVents           = boolDef(f.rearVents);
+  if (f.frontWirelessCharging !== undefined) out.frontWirelessCharging = boolDef(f.frontWirelessCharging);
+  if (f.frontPluginCharging !== undefined) out.frontPluginCharging = boolDef(f.frontPluginCharging);
+  if (f.rearWirelessCharging !== undefined) out.rearWirelessCharging = boolDef(f.rearWirelessCharging);
+  if (f.rearPluginCharging !== undefined)  out.rearPluginCharging  = boolDef(f.rearPluginCharging);
+  if (f.blindspotMonitor !== undefined)    out.blindspotMonitor    = boolDef(f.blindspotMonitor);
+  if (f.backupCamera !== undefined)        out.backupCamera        = boolDef(f.backupCamera);
+  if (f.powerFoldingMirrors !== undefined) out.powerFoldingMirrors = boolDef(f.powerFoldingMirrors);
+  if (f.roofRack !== undefined)            out.roofRack            = boolDef(f.roofRack);
+  return out;
 }
 
 function friendlyError(raw: string): string {

@@ -16,16 +16,41 @@ export interface SpecFields {
   transmission?: string;
   drivetrain?: string;
   fuelL100km?: number;
+  fuelL100kmCity?: number;
+  fuelL100kmHwy?: number;
   mpge?: number;
   evRange?: number;
   batteryKwh?: number;
+  chargeTimeLvl2Hr?: number;
+  chargeTimeDCMins?: number;
   seating?: number;
   cargoL?: number;
   towingKg?: number;
   lengthCm?: number;
   legroomFront?: number;
   legroomRear?: number;
+  rearHeadroomCm?: number;
   groundClear?: number;
+}
+
+export interface Features {
+  heatedSeats?: 'front' | 'front+rear' | null;
+  cooledSeats?: 'front' | 'front+rear' | null;
+  heatedSteeringWheel?: boolean;
+  powerSeats?: 'driver' | 'both' | null;
+  interiorMaterial?: 'cloth' | 'leatherette' | 'leather' | null;
+  sunroof?: boolean;
+  thirdRow?: boolean;
+  rearClimateControls?: boolean;
+  rearVents?: boolean;
+  frontWirelessCharging?: boolean;
+  frontPluginCharging?: boolean;
+  rearWirelessCharging?: boolean;
+  rearPluginCharging?: boolean;
+  blindspotMonitor?: boolean;
+  backupCamera?: boolean;
+  powerFoldingMirrors?: boolean;
+  roofRack?: boolean;
 }
 
 export interface Pricing {
@@ -104,6 +129,7 @@ export interface Vehicle {
   lease: Lease;
   ownership: Ownership;
   attachments: Attachment[];
+  features?: Features;
 }
 
 export interface MatrixFactor {
@@ -147,17 +173,50 @@ export const SPEC_FIELDS: SpecFieldDef[] = [
   { key: 'torque',       label: 'Torque',            group: 'Powertrain',   unit: 'Nm',       better: 'high' },
   { key: 'transmission', label: 'Transmission',      group: 'Powertrain',   kind: 'text' },
   { key: 'drivetrain',   label: 'Drivetrain',        group: 'Powertrain',   kind: 'text' },
-  { key: 'fuelL100km',   label: 'Fuel Economy',      group: 'Efficiency',   unit: 'L/100km',  better: 'low',  evHide: true },
-  { key: 'mpge',         label: 'Efficiency',        group: 'Efficiency',   unit: 'Le/100km', better: 'low',  evOnly: true },
-  { key: 'evRange',      label: 'EV Range',          group: 'Efficiency',   unit: 'km',       better: 'high', evOnly: true },
-  { key: 'batteryKwh',   label: 'Battery',           group: 'Efficiency',   unit: 'kWh',      better: 'high', evOnly: true },
+  { key: 'fuelL100km',        label: 'Fuel Economy (comb.)',    group: 'Efficiency',   unit: 'L/100km',  better: 'low',  evHide: true },
+  { key: 'fuelL100kmCity',    label: 'Fuel Economy (city)',    group: 'Efficiency',   unit: 'L/100km',  better: 'low',  evHide: true },
+  { key: 'fuelL100kmHwy',     label: 'Fuel Economy (hwy)',     group: 'Efficiency',   unit: 'L/100km',  better: 'low',  evHide: true },
+  { key: 'mpge',              label: 'Efficiency',             group: 'Efficiency',   unit: 'Le/100km', better: 'low',  evOnly: true },
+  { key: 'evRange',           label: 'EV Range',               group: 'Efficiency',   unit: 'km',       better: 'high', evOnly: true },
+  { key: 'batteryKwh',        label: 'Battery',                group: 'Efficiency',   unit: 'kWh',      better: 'high', evOnly: true },
+  { key: 'chargeTimeLvl2Hr',  label: 'Charge Time (L2, full)', group: 'Efficiency',   unit: 'hr',       better: 'low',  evOnly: true },
+  { key: 'chargeTimeDCMins',  label: 'DC Fast Charge (80%)',   group: 'Efficiency',   unit: 'min',      better: 'low',  evOnly: true },
   { key: 'seating',      label: 'Seating',           group: 'Practicality', unit: 'seats',    better: 'high' },
   { key: 'cargoL',       label: 'Cargo',             group: 'Practicality', unit: 'L',        better: 'high' },
   { key: 'towingKg',     label: 'Towing',            group: 'Practicality', unit: 'kg',       better: 'high' },
   { key: 'lengthCm',     label: 'Length',            group: 'Dimensions',   unit: 'cm' },
-  { key: 'legroomFront', label: 'Front Legroom',     group: 'Comfort',      unit: 'cm',       better: 'high' },
-  { key: 'legroomRear',  label: 'Rear Legroom',      group: 'Comfort',      unit: 'cm',       better: 'high' },
-  { key: 'groundClear',  label: 'Ground Clearance',  group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'legroomFront',   label: 'Front Legroom',    group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'legroomRear',   label: 'Rear Legroom',     group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'rearHeadroomCm',label: 'Rear Headroom',    group: 'Comfort',      unit: 'cm',       better: 'high' },
+  { key: 'groundClear',   label: 'Ground Clearance', group: 'Comfort',      unit: 'cm',       better: 'high' },
+];
+
+export interface FeatureFieldDef {
+  key: keyof Features;
+  label: string;
+  group: string;
+  type: 'boolean' | 'select';
+  options?: { value: string; label: string }[];
+}
+
+export const FEATURE_FIELDS: FeatureFieldDef[] = [
+  { key: 'heatedSeats',           label: 'Heated Seats',              group: 'Comfort',     type: 'select',  options: [{ value: 'front', label: 'Front only' }, { value: 'front+rear', label: 'Front + rear' }] },
+  { key: 'cooledSeats',           label: 'Cooled / Ventilated Seats', group: 'Comfort',     type: 'select',  options: [{ value: 'front', label: 'Front only' }, { value: 'front+rear', label: 'Front + rear' }] },
+  { key: 'heatedSteeringWheel',   label: 'Heated Steering Wheel',     group: 'Comfort',     type: 'boolean' },
+  { key: 'powerSeats',            label: 'Power Seats',               group: 'Comfort',     type: 'select',  options: [{ value: 'driver', label: 'Driver only' }, { value: 'both', label: 'Both front' }] },
+  { key: 'interiorMaterial',      label: 'Interior Material',         group: 'Interior',    type: 'select',  options: [{ value: 'cloth', label: 'Cloth' }, { value: 'leatherette', label: 'Leatherette / synthetic' }, { value: 'leather', label: 'Real leather' }] },
+  { key: 'sunroof',               label: 'Sunroof / Moonroof',        group: 'Interior',    type: 'boolean' },
+  { key: 'thirdRow',              label: '3rd Row Seating',           group: 'Interior',    type: 'boolean' },
+  { key: 'rearClimateControls',   label: 'Rear Climate Controls',     group: 'Interior',    type: 'boolean' },
+  { key: 'rearVents',             label: 'Rear HVAC Vents',           group: 'Interior',    type: 'boolean' },
+  { key: 'frontWirelessCharging', label: 'Front Wireless Charging',   group: 'Technology',  type: 'boolean' },
+  { key: 'frontPluginCharging',   label: 'Front USB Charging',        group: 'Technology',  type: 'boolean' },
+  { key: 'rearWirelessCharging',  label: 'Rear Wireless Charging',    group: 'Technology',  type: 'boolean' },
+  { key: 'rearPluginCharging',    label: 'Rear USB Charging',         group: 'Technology',  type: 'boolean' },
+  { key: 'blindspotMonitor',      label: 'Blind Spot Monitor',        group: 'Safety',      type: 'boolean' },
+  { key: 'backupCamera',          label: 'Backup Camera',             group: 'Safety',      type: 'boolean' },
+  { key: 'powerFoldingMirrors',   label: 'Power Folding Mirrors',     group: 'Exterior',    type: 'boolean' },
+  { key: 'roofRack',              label: 'Roof Rack',                 group: 'Exterior',    type: 'boolean' },
 ];
 
 export const RATING_CATS = [
@@ -215,6 +274,7 @@ export function blankVehicle(): Vehicle {
     lease: { termMonths: 36, residualPct: 58, downPayment: 2500, annualKm: 20000, moneyFactor: 0.0022 },
     ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1700, maintenanceYr: 700 },
     attachments: [],
+    features: {},
   };
 }
 
