@@ -35,10 +35,12 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [aiError, setAiError] = useState('');
+  const [aiLog, setAiLog] = useState('');
   const [htmlStatus, setHtmlStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [htmlError, setHtmlError] = useState('');
   const [specsStatus, setSpecsStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [specsError, setSpecsError] = useState('');
+  const [specsLog, setSpecsLog] = useState('');
   const [photoBlocked, setPhotoBlocked] = useState(false);
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
@@ -50,6 +52,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     if (!v.listingUrl.trim()) return;
     setAiStatus('loading');
     setAiError('');
+    setAiLog('');
     const result = await scrapeVehicleFromUrl(v.listingUrl.trim());
     if (!result.ok) {
       setAiStatus('error');
@@ -64,6 +67,12 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
       features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
     }));
+    const identityKeys = ['make', 'model', 'year', 'trim', 'powertrain', 'bodyStyle', 'color', 'dealer'];
+    const filled = identityKeys.filter(k => (rest as Record<string, unknown>)[k]);
+    const s = specs ? Object.values(specs).filter(v => v !== undefined && v !== null && v !== '').length : 0;
+    const f = features ? Object.values(features).filter(v => v !== undefined).length : 0;
+    const parts = [...(filled.length ? [filled.join(', ')] : []), ...(s ? [`${s} specs`] : []), ...(f ? [`${f} features`] : [])];
+    setAiLog(parts.length ? `✓ Filled: ${parts.join(' + ')}` : 'No data returned from this URL.');
     setAiStatus('idle');
   }
 
@@ -71,6 +80,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     if (!v.make.trim() || !v.model.trim()) return;
     setSpecsStatus('loading');
     setSpecsError('');
+    setSpecsLog('');
     const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
     if (!result.ok) {
       setSpecsStatus('error');
@@ -85,6 +95,12 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       specs: { ...prev.specs, ...specs },
       features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
     }));
+    const s = Object.values(specs).filter(val => val !== undefined && val !== null && val !== '').length;
+    const f = features ? Object.values(features).filter(val => val !== undefined).length : 0;
+    const parts = [...(s ? [`${s} specs`] : []), ...(f ? [`${f} features`] : [])];
+    setSpecsLog(parts.length
+      ? `✓ Filled ${parts.join(' + ')} — review in the Specifications tab after saving.`
+      : 'No data returned — try adding a more specific trim name.');
     setSpecsStatus('idle');
   }
 
@@ -149,18 +165,23 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           </Field>
         </div>
 
-        {/* AI Specs Lookup */}
+        {/* AI Specs Lookup — no URL required */}
         <div>
           <button
             className="btn btn-secondary"
             type="button"
             disabled={!v.make.trim() || !v.model.trim() || specsStatus === 'loading'}
             onClick={handleSpecsLookup}
-            title="Ask AI to fill in specs based on make/model/year/trim — no URL needed"
             style={{ width: '100%', justifyContent: 'center' }}
           >
-            {specsStatus === 'loading' ? 'Looking up specs…' : '✨ Lookup Specs from AI'}
+            {specsStatus === 'loading' ? '✨ Looking up…' : '✨ AI Fill'}
           </button>
+          {!v.make.trim() || !v.model.trim()
+            ? <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4, textAlign: 'center' }}>Enter make and model above to enable — no URL required</div>
+            : specsLog
+              ? <div style={{ fontSize: 12, color: specsLog.startsWith('✓') ? 'var(--good, #4a7a52)' : 'var(--ink-soft)', marginTop: 4 }}>{specsLog}</div>
+              : <div style={{ fontSize: 11, color: 'var(--ink-faint)', marginTop: 4, textAlign: 'center' }}>Fills specs + features from AI knowledge — no URL required</div>
+          }
           {specsStatus === 'error' && (
             <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{specsError}</div>
           )}
@@ -224,7 +245,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
               title="Use Gemini AI to fill in details from this URL"
               style={{ whiteSpace: 'nowrap' }}
             >
-              {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill'}
+              {aiStatus === 'loading' ? 'Fetching…' : '✨ AI Fill from URL'}
             </button>
             <button
               className="btn btn-secondary"
@@ -240,6 +261,9 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           </div>
           {aiStatus === 'error' && (
             <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{aiError}</div>
+          )}
+          {aiLog && aiStatus !== 'error' && (
+            <div style={{ fontSize: 12, color: aiLog.startsWith('✓') ? 'var(--good, #4a7a52)' : 'var(--ink-soft)', marginTop: 4 }}>{aiLog}</div>
           )}
           {htmlStatus === 'error' && (
             <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{htmlError}</div>
