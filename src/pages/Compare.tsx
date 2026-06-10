@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
   SPEC_FIELDS, RATING_CATS, TESTDRIVE_CATS,
-  financeCalc, leaseCalc, ownershipCalc,
+  financeCalc, leaseCalc, ownershipCalc, outTheDoor,
   type Vehicle,
 } from '../lib/data';
 import { money } from '../lib/fmt';
@@ -57,6 +57,9 @@ function ComparePicker({ vehicles, selected, onToggle, onClose }: {
         )}
         {vehicles.map(v => {
           const on = selected.includes(v.id);
+          const mode = v.pricingMode ?? 'finance';
+          const modeColorMap = { cash: '#4f7a52', finance: '#3f6f8f', lease: '#7a5aa8' } as const;
+          const modeLabelMap = { cash: 'Cash', finance: 'Finance', lease: 'Lease' } as const;
           return (
             <button
               key={v.id}
@@ -70,6 +73,13 @@ function ComparePicker({ vehicles, selected, onToggle, onClose }: {
                 <div style={{ fontSize: 14, fontWeight: 500, fontFamily: 'var(--serif)' }}>{v.year} {v.make} {v.model}</div>
                 <div style={{ fontSize: 12, color: 'var(--ink-soft)' }}>{v.trim}</div>
               </div>
+              <span style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                padding: '2px 7px', borderRadius: 99, border: `1.5px solid ${modeColorMap[mode]}`,
+                color: modeColorMap[mode], flexShrink: 0,
+              }}>
+                {modeLabelMap[mode]}
+              </span>
               <div style={{ width: 22, height: 22, borderRadius: 4, border: `1.5px solid ${on ? 'var(--accent)' : 'var(--line)'}`, background: on ? 'var(--accent)' : 'var(--card)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {on && <Icon name="check" size={12} style={{ color: '#fff' }} />}
               </div>
@@ -299,32 +309,49 @@ export default function Compare() {
         >
           {/* Sticky header row */}
           <div className={styles.headerCell} style={{ gridColumn: 1 }} />
-          {vehicles.map((v, i) => (
-            <div key={v.id} className={styles.vehicleHeader} style={{ gridColumn: i + 2 }}>
-              <div style={{ width: '100%', height: 3, borderRadius: 1.5, background: v.accent, marginBottom: 8 }} />
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
-                <PowertrainBadge powertrain={v.powertrain} size="sm" />
+          {vehicles.map((v, i) => {
+            const mode = v.pricingMode ?? 'finance';
+            const modeLabelMap = { cash: 'Cash', finance: 'Finance', lease: 'Lease' } as const;
+            const modeColorMap = { cash: '#4f7a52', finance: '#3f6f8f', lease: '#7a5aa8' } as const;
+            const primaryValue = mode === 'cash'
+              ? money(outTheDoor(v.pricing))
+              : mode === 'lease'
+                ? `${money(leaseCalc(v).monthly)}/mo`
+                : `${money(financeCalc(v).monthly)}/mo`;
+            return (
+              <div key={v.id} className={styles.vehicleHeader} style={{ gridColumn: i + 2 }}>
+                <div style={{ width: '100%', height: 3, borderRadius: 1.5, background: v.accent, marginBottom: 8 }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 6 }}>
+                  <PowertrainBadge powertrain={v.powertrain} size="sm" />
+                  <span style={{
+                    fontSize: 10, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase',
+                    padding: '2px 7px', borderRadius: 99, border: `1.5px solid ${modeColorMap[mode]}`,
+                    color: modeColorMap[mode],
+                  }}>
+                    {modeLabelMap[mode]}
+                  </span>
+                  <button
+                    className="btn btn-ghost"
+                    style={{ padding: '2px 4px', color: 'var(--ink-faint)' }}
+                    onClick={() => { const next = compareIds.filter(id => id !== v.id); setCompareIds(next); }}
+                    title="Remove from compare"
+                  >
+                    <Icon name="x" size={13} />
+                  </button>
+                </div>
                 <button
-                  className="btn btn-ghost"
-                  style={{ padding: '2px 4px', marginLeft: 'auto', color: 'var(--ink-faint)' }}
-                  onClick={() => { const next = compareIds.filter(id => id !== v.id); setCompareIds(next); }}
-                  title="Remove from compare"
+                  onClick={() => navigate(`/vehicle/${v.id}`)}
+                  style={{ textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
                 >
-                  <Icon name="x" size={13} />
+                  <div style={{ fontFamily: 'var(--serif)', fontSize: 14, fontWeight: 500, lineHeight: 1.3 }}>{v.year} {v.make} {v.model}</div>
+                  <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{v.trim}</div>
                 </button>
+                <div className="num" style={{ fontSize: 14, fontWeight: 600, color: v.accent, marginTop: 6 }}>
+                  {primaryValue}
+                </div>
               </div>
-              <button
-                onClick={() => navigate(`/vehicle/${v.id}`)}
-                style={{ textAlign: 'left', background: 'none', border: 'none', cursor: 'pointer', padding: 0, marginTop: 4 }}
-              >
-                <div style={{ fontFamily: 'var(--serif)', fontSize: 14, fontWeight: 500, lineHeight: 1.3 }}>{v.year} {v.make} {v.model}</div>
-                <div style={{ fontSize: 11, color: 'var(--ink-soft)', marginTop: 2 }}>{v.trim}</div>
-              </button>
-              <div className="num" style={{ fontSize: 14, fontWeight: 600, color: v.accent, marginTop: 6 }}>
-                {money(v.pricing.sellingPrice || v.pricing.msrp)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Section bands + rows */}
           {sectionOrder.map(section => {

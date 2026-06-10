@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { financeCalc, ownershipCalc, avgRating, type Vehicle, type Powertrain } from '../lib/data';
+import { financeCalc, leaseCalc, ownershipCalc, outTheDoor, avgRating, type Vehicle, type Powertrain } from '../lib/data';
 import { money } from '../lib/fmt';
 import Icon from '../components/Icon';
 import PowertrainBadge from '../components/PowertrainBadge';
@@ -104,8 +104,13 @@ interface VehicleCardProps {
   onClick: () => void;
 }
 
+const MODE_LABEL: Record<string, string> = { cash: 'Cash', finance: 'Finance', lease: 'Lease' };
+const MODE_CLASS: Record<string, string> = { cash: styles.modeCash, finance: styles.modeFinance, lease: styles.modeLease };
+
 function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestore, onDuplicate, onDelete, onClick }: VehicleCardProps) {
+  const mode = v.pricingMode ?? 'finance';
   const finance = financeCalc(v);
+  const lease = leaseCalc(v);
   const own = ownershipCalc(v);
   const rating = avgRating(v);
 
@@ -145,7 +150,10 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
 
       {/* Body */}
       <div className={styles.body}>
-        <div className={styles.eyebrow}>{v.year} · {v.bodyStyle}</div>
+        <div className={styles.eyebrow}>
+          {v.year} · {v.bodyStyle}
+          <span className={`${styles.modeChip} ${MODE_CLASS[mode]}`}>{MODE_LABEL[mode]}</span>
+        </div>
         <h3 className={`${styles.name} truncate`} onClick={onClick} style={{ cursor: 'pointer' }}>
           {v.make} {v.model}
         </h3>
@@ -153,20 +161,54 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
 
         {!v.archived ? (
           <>
-            {/* Stats grid */}
+            {/* Stats grid — adapts to pricingMode */}
             <div className={styles.statsGrid}>
-              <div>
-                <div className="label">Price</div>
-                <div className="num" style={{ fontSize: 15, fontWeight: 600, color: 'var(--accent)', marginTop: 2 }}>
-                  {money(v.pricing.sellingPrice || v.pricing.msrp)}
-                </div>
-              </div>
-              <div>
-                <div className="label">Est. / Mo</div>
-                <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
-                  {money(finance.monthly)}<span style={{ fontSize: 11, color: 'var(--ink-faint)' }}> /{v.finance.termMonths}mo</span>
-                </div>
-              </div>
+              {mode === 'cash' ? (
+                <>
+                  <div>
+                    <div className="label">Out the Door</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 600, color: 'var(--accent)', marginTop: 2 }}>
+                      {money(outTheDoor(v.pricing))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="label">MSRP</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
+                      {money(v.pricing.msrp || v.pricing.sellingPrice)}
+                    </div>
+                  </div>
+                </>
+              ) : mode === 'lease' ? (
+                <>
+                  <div>
+                    <div className="label">Lease / Mo</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 600, color: 'var(--accent)', marginTop: 2 }}>
+                      {money(lease.monthly)}<span style={{ fontSize: 11, color: 'var(--ink-faint)' }}> /{v.lease.termMonths}mo</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="label">Total Lease</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
+                      {money(lease.totalLease)}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <div className="label">Price</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 600, color: 'var(--accent)', marginTop: 2 }}>
+                      {money(v.pricing.sellingPrice || v.pricing.msrp)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="label">Finance / Mo</div>
+                    <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
+                      {money(finance.monthly)}<span style={{ fontSize: 11, color: 'var(--ink-faint)' }}> /{v.finance.termMonths}mo</span>
+                    </div>
+                  </div>
+                </>
+              )}
               <div>
                 <div className="label">Your Rating</div>
                 {rating > 0

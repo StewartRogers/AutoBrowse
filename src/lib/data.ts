@@ -5,6 +5,7 @@
 
 export type Powertrain = 'gas' | 'hybrid' | 'ev';
 export type Condition = 'New' | 'Used' | 'CPO';
+export type PricingMode = 'cash' | 'finance' | 'lease';
 export type BodyStyle = 'Sedan' | 'Coupe' | 'Hatchback' | 'SUV' | 'Crossover' | 'Truck' | 'Minivan' | 'Wagon';
 export type MatrixMetricKey = keyof typeof MATRIX_METRICS;
 
@@ -72,6 +73,10 @@ export interface Vehicle {
   excludedAt: number;
   createdAt: number;
   viewedAt: number;
+
+  // Pricing scenario
+  pricingMode: PricingMode;  // what mode this entry represents
+  groupId: string;            // shared across copies of the same car
 
   // Identity
   make: string;
@@ -188,13 +193,16 @@ export const ACCENT_PALETTE = ['#b4552d', '#4f7a52', '#3f6f8f', '#7a5aa8', '#8a7
 
 // ---------- defaults ----------
 export function blankVehicle(): Vehicle {
+  const id = uid();
   return {
-    id: uid(),
+    id,
     archived: false,
     excludeReason: '',
     excludedAt: 0,
     createdAt: Date.now(),
     viewedAt: Date.now(),
+    pricingMode: 'finance',
+    groupId: id,
     make: '', model: '', year: new Date().getFullYear(), trim: '', bodyStyle: 'Sedan',
     condition: 'New', mileage: 0, color: '', dealer: '', listingUrl: '',
     photoUrl: '',
@@ -387,7 +395,10 @@ export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
 
 // ---------- seed data ----------
 export function SEED_VEHICLES(): Vehicle[] {
-  const mk = (data: Partial<Vehicle>): Vehicle => ({ ...blankVehicle(), ...data, id: uid() });
+  const mk = (data: Partial<Vehicle>): Vehicle => {
+    const id = uid();
+    return { ...blankVehicle(), ...data, id, groupId: id };
+  };
   return [
     mk({
       make: 'Honda', model: 'Accord', year: 2025, trim: 'Hybrid Touring', bodyStyle: 'Sedan',

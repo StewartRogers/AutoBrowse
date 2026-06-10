@@ -133,10 +133,12 @@ export const useStore = create<AppState>()((set, get) => ({
   },
 
   addVehicle(partial = {}) {
+    const id = uid();
     const nv: Vehicle = {
       ...blankVehicle(),
       ...partial,
-      id: uid(),
+      id,
+      groupId: (partial as Partial<Vehicle>).groupId ?? id,
       createdAt: Date.now(),
       viewedAt: Date.now(),
     };
@@ -183,7 +185,9 @@ export const useStore = create<AppState>()((set, get) => ({
       copy = JSON.parse(JSON.stringify(v)) as Vehicle;
       copy.id = uid();
       newId = copy.id;
-      copy.trim = (copy.trim || '') + ' (scenario)';
+      // Preserve groupId so this copy is linked to the original car
+      copy.groupId = v.groupId || v.id;
+      copy.trim = copy.trim || '';
       copy.createdAt = Date.now();
       const idx = s.vehicles.findIndex(x => x.id === id);
       const arr = [...s.vehicles];

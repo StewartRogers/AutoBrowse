@@ -3,8 +3,8 @@ import { useState } from 'react';
 import Modal from '../components/Modal';
 import Field from '../components/Field';
 import Segmented from '../components/Segmented';
-import { blankVehicle, BODY_STYLES, ACCENT_PALETTE, type Vehicle, type Powertrain, type Condition } from '../lib/data';
-import { scrapeVehicleFromUrl } from '../lib/geminiScrape';
+import { blankVehicle, BODY_STYLES, ACCENT_PALETTE, type Vehicle, type Powertrain, type Condition, type PricingMode } from '../lib/data';
+import { scrapeVehicleFromUrl, lookupVehicleSpecs } from '../lib/geminiScrape';
 import { scrapeVehicleHtmlFromUrl } from '../lib/htmlScrape';
 
 interface Props {
@@ -25,12 +25,20 @@ const COND_OPTIONS = [
   { value: 'CPO' as Condition, label: 'CPO' },
 ];
 
+const PM_OPTIONS = [
+  { value: 'cash' as PricingMode, label: 'Cash' },
+  { value: 'finance' as PricingMode, label: 'Finance' },
+  { value: 'lease' as PricingMode, label: 'Lease' },
+];
+
 export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
   const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [aiError, setAiError] = useState('');
   const [htmlStatus, setHtmlStatus] = useState<'idle' | 'loading' | 'error'>('idle');
   const [htmlError, setHtmlError] = useState('');
+  const [specsStatus, setSpecsStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [specsError, setSpecsError] = useState('');
   const [photoBlocked, setPhotoBlocked] = useState(false);
 
   const set = (patch: Partial<Vehicle>) => setV(prev => ({ ...prev, ...patch }));
@@ -56,6 +64,26 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
     }));
     setAiStatus('idle');
+  }
+
+  async function handleSpecsLookup() {
+    if (!v.make.trim() || !v.model.trim()) return;
+    setSpecsStatus('loading');
+    setSpecsError('');
+    const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
+    if (!result.ok) {
+      setSpecsStatus('error');
+      setSpecsError(result.error);
+      return;
+    }
+    const { specs, powertrain, bodyStyle } = result.data;
+    setV(prev => ({
+      ...prev,
+      ...(powertrain ? { powertrain } : {}),
+      ...(bodyStyle  ? { bodyStyle  } : {}),
+      specs: { ...prev.specs, ...specs },
+    }));
+    setSpecsStatus('idle');
   }
 
   async function handleHtmlFill() {
@@ -93,10 +121,15 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       }
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-        {/* Powertrain */}
-        <Field label="Powertrain">
-          <Segmented options={PT_OPTIONS} value={v.powertrain} onChange={(val) => set({ powertrain: val })} />
-        </Field>
+        {/* Pricing mode + Powertrain */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Pricing Mode">
+            <Segmented options={PM_OPTIONS} value={v.pricingMode ?? 'finance'} onChange={(val) => set({ pricingMode: val })} />
+          </Field>
+          <Field label="Powertrain">
+            <Segmented options={PT_OPTIONS} value={v.powertrain} onChange={(val) => set({ powertrain: val })} />
+          </Field>
+        </div>
 
         {/* Identity */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
@@ -112,6 +145,23 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           <Field label="Trim">
             <input className="input" value={v.trim} onChange={e => set({ trim: e.target.value })} placeholder="Hybrid Touring" />
           </Field>
+        </div>
+
+        {/* AI Specs Lookup */}
+        <div>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={!v.make.trim() || !v.model.trim() || specsStatus === 'loading'}
+            onClick={handleSpecsLookup}
+            title="Ask AI to fill in specs based on make/model/year/trim — no URL needed"
+            style={{ width: '100%', justifyContent: 'center' }}
+          >
+            {specsStatus === 'loading' ? 'Looking up specs…' : '✨ Lookup Specs from AI'}
+          </button>
+          {specsStatus === 'error' && (
+            <div style={{ fontSize: 12, color: 'var(--red, #c0392b)', marginTop: 4 }}>{specsError}</div>
+          )}
         </div>
 
         {/* Body / Condition */}

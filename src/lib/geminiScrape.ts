@@ -75,6 +75,110 @@ src of the largest primary vehicle hero image. Always return a fully-qualified a
   }
 }`;
 
+const SPECS_PROMPT = `You are an automotive data expert with deep knowledge of vehicle specifications.
+Given a vehicle's year, make, model, and trim, return its technical specifications.
+
+Return ONLY a valid JSON object — no markdown fences, no explanation.
+Omit any field you are not confident about. Never fabricate values you don't know.
+Use Canadian/metric units:
+- Dimensions → centimetres (cm)
+- Cargo volume → litres (L)
+- Torque → Newton-metres (Nm)
+- Towing capacity → kilograms (kg)
+- Fuel economy → litres per 100 km (L/100km)
+- EV efficiency → litres equivalent per 100 km (Le/100km)
+- EV range → kilometres (km)
+
+{
+  "powertrain": "gas" | "hybrid" | "ev",
+  "bodyStyle": "Sedan" | "Coupe" | "Hatchback" | "SUV" | "Crossover" | "Truck" | "Minivan" | "Wagon",
+  "specs": {
+    "engine": "string",
+    "horsepower": 0,
+    "torque": 0,
+    "transmission": "string",
+    "drivetrain": "string",
+    "fuelL100km": 0,
+    "mpge": 0,
+    "evRange": 0,
+    "batteryKwh": 0,
+    "seating": 0,
+    "cargoL": 0,
+    "towingKg": 0,
+    "lengthCm": 0,
+    "legroomFront": 0,
+    "legroomRear": 0,
+    "groundClear": 0
+  }
+}`;
+
+export type SpecsLookupResult = {
+  ok: true;
+  data: { powertrain?: Vehicle['powertrain']; bodyStyle?: Vehicle['bodyStyle']; specs: Partial<Vehicle['specs']> };
+} | {
+  ok: false;
+  error: string;
+};
+
+export async function lookupVehicleSpecs(
+  year: number,
+  make: string,
+  model: string,
+  trim: string,
+): Promise<SpecsLookupResult> {
+  const { apiKey, model: aiModel } = getGeminiConfig();
+
+  if (!apiKey) {
+    return { ok: false, error: 'No Gemini API key set. Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.' };
+  }
+
+  try {
+    const ai = new GoogleGenAI({ apiKey });
+    const prompt = `${SPECS_PROMPT}\n\nVehicle: ${year} ${make} ${model}${trim ? ' ' + trim : ''}`;
+
+    const response = await ai.models.generateContent({
+      model: aiModel,
+      contents: prompt,
+      config: { temperature: 0 },
+    });
+
+    const text = response.text ?? '';
+    const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return { ok: false, error: 'No specs returned. Try entering make/model/year/trim more specifically.' };
+
+    const raw = JSON.parse(jsonMatch[0]);
+    const result: SpecsLookupResult['data'] = { specs: {} };
+
+    if (raw.powertrain) result.powertrain = raw.powertrain;
+    if (raw.bodyStyle)  result.bodyStyle  = raw.bodyStyle;
+
+    if (raw.specs) {
+      const s = raw.specs;
+      if (s.engine)        result.specs.engine        = s.engine;
+      if (s.horsepower)    result.specs.horsepower    = Number(s.horsepower);
+      if (s.torque)        result.specs.torque        = Number(s.torque);
+      if (s.transmission)  result.specs.transmission  = s.transmission;
+      if (s.drivetrain)    result.specs.drivetrain    = s.drivetrain;
+      if (s.fuelL100km)    result.specs.fuelL100km    = Number(s.fuelL100km);
+      if (s.mpge)          result.specs.mpge          = Number(s.mpge);
+      if (s.evRange)       result.specs.evRange       = Number(s.evRange);
+      if (s.batteryKwh)    result.specs.batteryKwh    = Number(s.batteryKwh);
+      if (s.seating)       result.specs.seating       = Number(s.seating);
+      if (s.cargoL)        result.specs.cargoL        = Number(s.cargoL);
+      if (s.towingKg)      result.specs.towingKg      = Number(s.towingKg);
+      if (s.lengthCm)      result.specs.lengthCm      = Number(s.lengthCm);
+      if (s.legroomFront)  result.specs.legroomFront  = Number(s.legroomFront);
+      if (s.legroomRear)   result.specs.legroomRear   = Number(s.legroomRear);
+      if (s.groundClear)   result.specs.groundClear   = Number(s.groundClear);
+    }
+
+    return { ok: true, data: result };
+  } catch (err: unknown) {
+    const raw = err instanceof Error ? err.message : String(err);
+    return { ok: false, error: friendlyError(raw) };
+  }
+}
+
 export type ScrapeResult = {
   ok: true;
   data: Partial<Vehicle> & { specs?: Partial<Vehicle['specs']> };

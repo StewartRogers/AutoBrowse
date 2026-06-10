@@ -121,6 +121,22 @@
   border-top: 1px solid var(--line-soft);
 }
 
+.modeChip {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 99px;
+  border: 1.5px solid currentColor;
+  margin-left: 4px;
+  vertical-align: middle;
+}
+.modeCash    { color: #4f7a52; }
+.modeFinance { color: #3f6f8f; }
+.modeLease   { color: #7a5aa8; }
+
 .openBtn {
   margin-top: 12px;
   width: 100%;
