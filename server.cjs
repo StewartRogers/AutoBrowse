@@ -191,6 +191,39 @@ app.get('/api/scrape-html', async (req, res) => {
   }
 });
 
+// ─── Wikipedia photo fallback ───────────────────────────────────────────────
+
+app.get('/api/wiki-photo', async (req, res) => {
+  try {
+    const year  = String(req.query.year  || '').trim();
+    const make  = String(req.query.make  || '').trim();
+    const model = String(req.query.model || '').trim();
+    if (!make || !model) {
+      return res.status(400).json({ ok: false, error: 'Missing make or model.' });
+    }
+
+    // Try progressively simpler titles: "YYYY Make Model", "Make Model", "Make Model (automobile)"
+    const candidates = [
+      year ? `${year} ${make} ${model}` : null,
+      `${make} ${model}`,
+      `${make} ${model} (automobile)`,
+    ].filter(Boolean).map(t => t.replace(/ /g, '_'));
+
+    for (const title of candidates) {
+      const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
+      const resp = await fetch(url, { headers: { 'User-Agent': 'AutoBrowse/1.0 (car research app)' } });
+      if (!resp.ok) continue;
+      const json = await resp.json();
+      const thumb = json?.thumbnail?.source || json?.originalimage?.source;
+      if (thumb) return res.json({ ok: true, photoUrl: thumb });
+    }
+
+    return res.json({ ok: false, error: 'No Wikipedia photo found.' });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 // ─── Root ───────────────────────────────────────────────────────────────────
 
 app.get('/', (req, res) => {

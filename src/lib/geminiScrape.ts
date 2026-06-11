@@ -120,6 +120,8 @@ Use Canadian/metric units:
 {
   "powertrain": "gas" | "hybrid" | "ev",
   "bodyStyle": "Sedan" | "Coupe" | "Hatchback" | "SUV" | "Crossover" | "Truck" | "Minivan" | "Wagon",
+  "photoUrl": "string (absolute URL to an official manufacturer press/media photo for this model year and trim — must be a real, publicly accessible URL you are confident exists)",
+
   "specs": {
     "engine": "string",
     "horsepower": 0,
@@ -170,7 +172,7 @@ FEATURES: Return features that are standard (included) on this specific trim. Re
 
 export type SpecsLookupResult = {
   ok: true;
-  data: { powertrain?: Vehicle['powertrain']; bodyStyle?: Vehicle['bodyStyle']; specs: Partial<Vehicle['specs']>; features?: Partial<Features> };
+  data: { powertrain?: Vehicle['powertrain']; bodyStyle?: Vehicle['bodyStyle']; photoUrl?: string; specs: Partial<Vehicle['specs']>; features?: Partial<Features> };
 } | {
   ok: false;
   error: string;
@@ -207,6 +209,7 @@ export async function lookupVehicleSpecs(
 
     if (raw.powertrain) result.powertrain = raw.powertrain;
     if (raw.bodyStyle)  result.bodyStyle  = raw.bodyStyle;
+    if (raw.photoUrl)   result.photoUrl   = raw.photoUrl;
 
     if (raw.specs) {
       const s = raw.specs;

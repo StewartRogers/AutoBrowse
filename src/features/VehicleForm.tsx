@@ -9,6 +9,18 @@ import { scrapeVehicleFromUrl, lookupVehicleSpecs } from '../lib/geminiScrape';
 import { scrapeVehicleHtmlFromUrl } from '../lib/htmlScrape';
 import { useStore } from '../store/useStore';
 
+async function fetchWikiPhoto(year: number, make: string, model: string): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({ year: String(year), make, model });
+    const resp = await fetch(`/api/wiki-photo?${params}`);
+    if (!resp.ok) return null;
+    const json = await resp.json() as { ok: boolean; photoUrl?: string };
+    return json.ok && json.photoUrl ? json.photoUrl : null;
+  } catch {
+    return null;
+  }
+}
+
 interface Props {
   initial?: Vehicle;
   onSave: (v: Vehicle) => void;  // edit mode only
@@ -83,12 +95,14 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
         return;
       }
 
-      const { specs, features, powertrain, bodyStyle } = result.data;
+      const { specs, features, powertrain, bodyStyle, photoUrl: geminiPhoto } = result.data;
+      const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim()) || geminiPhoto;
       addAndOpen({
         ...(powertrain ? { powertrain } : {}),
         ...(bodyStyle  ? { bodyStyle  } : {}),
         specs,
         ...(features   ? { features   } : {}),
+        ...(photoUrl   ? { photoUrl   } : {}),
       });
     }
 
@@ -209,13 +223,15 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       setSpecsError(result.error);
       return;
     }
-    const { specs, features, powertrain, bodyStyle } = result.data;
+    const { specs, features, powertrain, bodyStyle, photoUrl: geminiPhoto } = result.data;
+    const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim()) || geminiPhoto;
     setV(prev => ({
       ...prev,
       ...(powertrain ? { powertrain } : {}),
       ...(bodyStyle  ? { bodyStyle  } : {}),
       specs: { ...prev.specs, ...specs },
       features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
+      ...(photoUrl   ? { photoUrl   } : {}),
     }));
     const s = Object.values(specs).filter(val => val !== undefined && val !== null && val !== '').length;
     const f = features ? Object.values(features).filter(val => val !== undefined).length : 0;
