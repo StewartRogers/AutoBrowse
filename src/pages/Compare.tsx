@@ -357,7 +357,7 @@ export default function Compare() {
                   <button
                     className="btn btn-ghost"
                     style={{ padding: '2px 4px', color: 'var(--ink-faint)' }}
-                    onClick={() => { const next = compareIds.filter(id => id !== v.id); setCompareIds(next); }}
+                    onClick={() => toggleCompare(v.id)}
                     title="Remove from compare"
                   >
                     <Icon name="x" size={13} />

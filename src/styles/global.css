@@ -30,12 +30,15 @@ button { cursor: pointer; font-family: var(--sans); border: none; background: no
 input, textarea, select { font-family: var(--sans); font-size: inherit; }
 
 /* ── Page entrance animation ── */
+/* Note: transform intentionally avoided here — CSS transforms on ancestors
+   create a new containing block for position:fixed descendants, which
+   would trap modal overlays inside .app-content instead of the viewport. */
 @keyframes fade-in {
-  from { transform: translateY(7px); }
-  to   { transform: none; }
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 .fade-in {
-  animation: fade-in 0.4s cubic-bezier(.2,.7,.2,1) both;
+  animation: fade-in 0.25s ease both;
 }
 
 /* ── Scrollbar ── */
