@@ -74,6 +74,13 @@ input, textarea, select { font-family: var(--sans); font-size: inherit; }
   padding: 40px var(--content-pad) 80px;
 }
 
+@media (max-width: 1180px) {
+  .app-content {
+    padding-top: 28px;
+    padding-bottom: 56px;
+  }
+}
+
 /* ── Card ── */
 .card {
   background: var(--card);

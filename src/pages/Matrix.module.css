@@ -6,7 +6,8 @@
   gap: 24px;
   align-items: start;
 }
-@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+@media (max-width: 1180px) { .layout { grid-template-columns: 260px 1fr; } }
+@media (max-width: 860px)  { .layout { grid-template-columns: 1fr; } }
 
 /* Factors panel */
 .factorsPanel {

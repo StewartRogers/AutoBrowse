@@ -63,6 +63,9 @@
   border-radius: 99px;
   padding: 3px 10px;
 }
+@media (max-width: 1180px) {
+  .spotlightPhoto { width: 220px; }
+}
 @media (max-width: 700px) {
   .spotlight { flex-direction: column; }
   .spotlightPhoto { width: 100%; }
