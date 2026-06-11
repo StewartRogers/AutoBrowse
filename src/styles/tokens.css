@@ -41,3 +41,11 @@
   --content-max:  1320px;
   --content-pad:  36px;
 }
+
+/* iPad landscape and similar mid-size tablets (1024–1180px CSS viewport) */
+@media (max-width: 1180px) {
+  :root {
+    --sidebar-w:   210px;
+    --content-pad: 24px;
+  }
+}
