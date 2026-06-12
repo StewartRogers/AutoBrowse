@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently -n api,vite -c cyan,green \"node server.cjs\" \"vite\"",
+    "dev": "concurrently -n api,vite -c cyan,green \"node server.cjs\" \"vite --host 0.0.0.0\"",
     "dev:vite": "vite",
     "dev:api": "node server.cjs",
     "build": "tsc -b && vite build",
