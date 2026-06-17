@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { financeCalc, ownershipCalc, avgRating, matrixScores } from '../lib/data';
@@ -40,33 +41,25 @@ export default function Dashboard() {
   const matrix = useStore(s => s.matrix);
   const compareIds = useStore(s => s.compareIds);
 
-  const active = vehicles.filter(v => !v.archived);
+  const active = useMemo(() => vehicles.filter(v => !v.archived), [vehicles]);
   const total = vehicles.length;
 
-  // Stat band calculations
-  const prices = active.map(v => v.pricing.sellingPrice || v.pricing.msrp || 0).filter(Boolean);
-  const priceRangeMax = prices.length ? money(Math.max(...prices)) : '';
-
-  const paymentsByVehicle = active.map(v => ({ v, mo: financeCalc(v).monthly })).sort((a, b) => a.mo - b.mo);
-  const lowestPayment = paymentsByVehicle[0];
-
-  const matrixResults = matrixScores(active, matrix);
-  const topMatch = matrixResults[0];
+  const { prices, priceRangeMax, lowestPayment, topMatch, paymentLeaders, ownLeaders, matrixLeaders, recentLeaders } = useMemo(() => {
+    const prices = active.map(v => v.pricing.sellingPrice || v.pricing.msrp || 0).filter(Boolean);
+    const priceRangeMax = prices.length ? money(Math.max(...prices)) : '';
+    const paymentsByVehicle = active.map(v => ({ v, mo: financeCalc(v).monthly })).sort((a, b) => a.mo - b.mo);
+    const lowestPayment = paymentsByVehicle[0];
+    const matrixResults = matrixScores(active, matrix);
+    const topMatch = matrixResults[0];
+    const paymentLeaders = [...active].sort((a, b) => financeCalc(a).monthly - financeCalc(b).monthly).slice(0, 4);
+    const ownLeaders = [...active].sort((a, b) => ownershipCalc(a).y5 - ownershipCalc(b).y5).slice(0, 4);
+    const matrixLeaders = matrixResults.slice(0, 4);
+    const recentLeaders = [...active].sort((a, b) => b.viewedAt - a.viewedAt).slice(0, 4);
+    return { prices, priceRangeMax, lowestPayment, matrixResults, topMatch, paymentLeaders, ownLeaders, matrixLeaders, recentLeaders };
+  }, [active, matrix]);
 
   // Date eyebrow
   const dateStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).toUpperCase();
-
-  // Panel: best monthly payment
-  const paymentLeaders = [...active].sort((a, b) => financeCalc(a).monthly - financeCalc(b).monthly).slice(0, 4);
-
-  // Panel: lowest 5-yr cost
-  const ownLeaders = [...active].sort((a, b) => ownershipCalc(a).y5 - ownershipCalc(b).y5).slice(0, 4);
-
-  // Panel: top matrix matches
-  const matrixLeaders = matrixResults.slice(0, 4);
-
-  // Panel: recently viewed
-  const recentLeaders = [...active].sort((a, b) => b.viewedAt - a.viewedAt).slice(0, 4);
 
   return (
     <div className="fade-in">

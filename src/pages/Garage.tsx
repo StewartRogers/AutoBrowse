@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { financeCalc, leaseCalc, ownershipCalc, outTheDoor, avgRating, type Vehicle, type Powertrain } from '../lib/data';
@@ -261,35 +261,41 @@ interface GarageProps {
 
 export default function Garage({ onAddVehicle, onEditVehicle }: GarageProps) {
   const navigate = useNavigate();
-  const { vehicles, toggleCompare, setExcluded, duplicateVehicle, removeVehicle } = useStore();
+  const vehicles = useStore(s => s.vehicles);
   const compareIds = useStore(s => s.compareIds);
+  const toggleCompare = useStore(s => s.toggleCompare);
+  const setExcluded = useStore(s => s.setExcluded);
+  const duplicateVehicle = useStore(s => s.duplicateVehicle);
+  const removeVehicle = useStore(s => s.removeVehicle);
 
   const [ptFilter, setPtFilter] = useState<PtFilter>('all');
   const [sort, setSort] = useState<SortKey>('recent');
   const [status, setStatus] = useState<StatusFilter>('active');
   const [excludeTarget, setExcludeTarget] = useState<Vehicle | null>(null);
 
-  const active = vehicles.filter(v => !v.archived);
-  const excluded = vehicles.filter(v => v.archived);
+  const active = useMemo(() => vehicles.filter(v => !v.archived), [vehicles]);
+  const excluded = useMemo(() => vehicles.filter(v => v.archived), [vehicles]);
 
-  let filtered = status === 'active' ? active : status === 'excluded' ? excluded : vehicles;
-  if (ptFilter !== 'all') filtered = filtered.filter(v => v.powertrain === ptFilter);
+  const sorted = useMemo(() => {
+    let filtered = status === 'active' ? active : status === 'excluded' ? excluded : vehicles;
+    if (ptFilter !== 'all') filtered = filtered.filter(v => v.powertrain === ptFilter);
 
-  const sorted = [...filtered].sort((a, b) => {
-    switch (sort) {
-      case 'price': return (a.pricing.sellingPrice || a.pricing.msrp) - (b.pricing.sellingPrice || b.pricing.msrp);
-      case 'payment': return financeCalc(a).monthly - financeCalc(b).monthly;
-      case 'rating': return avgRating(b) - avgRating(a);
-      case 'economy': {
-        const eco = (v: Vehicle) => v.powertrain === 'ev'
-          ? (v.specs.mpge ? 1 / v.specs.mpge : 0)
-          : (v.specs.fuelL100km ? 1 / v.specs.fuelL100km : 0);
-        return eco(b) - eco(a);
+    return [...filtered].sort((a, b) => {
+      switch (sort) {
+        case 'price': return (a.pricing.sellingPrice || a.pricing.msrp) - (b.pricing.sellingPrice || b.pricing.msrp);
+        case 'payment': return financeCalc(a).monthly - financeCalc(b).monthly;
+        case 'rating': return avgRating(b) - avgRating(a);
+        case 'economy': {
+          const eco = (v: Vehicle) => v.powertrain === 'ev'
+            ? (v.specs.mpge ? 1 / v.specs.mpge : 0)
+            : (v.specs.fuelL100km ? 1 / v.specs.fuelL100km : 0);
+          return eco(b) - eco(a);
+        }
+        case 'name': return `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`);
+        default: return b.createdAt - a.createdAt;
       }
-      case 'name': return `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`);
-      default: return b.createdAt - a.createdAt;
-    }
-  });
+    });
+  }, [vehicles, active, excluded, status, ptFilter, sort]);
 
   const statusLabel = (s: StatusFilter) => {
     if (s === 'active') return `In consideration (${active.length})`;

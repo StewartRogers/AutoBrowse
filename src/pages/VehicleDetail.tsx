@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
@@ -446,12 +446,14 @@ export default function VehicleDetail({ onEdit }: Props) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const vehicle = useStore(s => s.vehicles.find(v => v.id === id));
-  const { updateVehicle, setExcluded, duplicateVehicle, touchViewed } = useStore();
+  const updateVehicle = useStore(s => s.updateVehicle);
+  const setExcluded = useStore(s => s.setExcluded);
+  const duplicateVehicle = useStore(s => s.duplicateVehicle);
+  const touchViewed = useStore(s => s.touchViewed);
   const [tab, setTab] = useState<Tab>('Overview');
   const [excludeOpen, setExcludeOpen] = useState(false);
 
-  // Stamp viewedAt on mount
-  useState(() => { if (id) touchViewed(id); });
+  useEffect(() => { if (id) touchViewed(id); }, [id, touchViewed]);
 
   if (!vehicle) {
     return (

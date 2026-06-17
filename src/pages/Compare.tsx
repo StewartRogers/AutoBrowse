@@ -192,24 +192,27 @@ function buildRows(vehicles: Vehicle[], activeSections: Set<Section>): CompareRo
   }
 
   if (activeSections.has('Finance')) {
-    rows.push({ label: 'Monthly Payment', section: 'Finance', values: vehicles.map(v => financeCalc(v).monthly), better: 'low', numericValues: vehicles.map(v => financeCalc(v).monthly), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    const finResults = vehicles.map(v => financeCalc(v));
+    rows.push({ label: 'Monthly Payment', section: 'Finance', values: finResults.map(r => r.monthly), better: 'low', numericValues: finResults.map(r => r.monthly), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
     rows.push({ label: 'APR', section: 'Finance', values: vehicles.map(v => v.finance.apr), better: 'low', numericValues: vehicles.map(v => v.finance.apr), renderCell: (val) => <span className="num">{val}%</span> });
     rows.push({ label: 'Term', section: 'Finance', values: vehicles.map(v => `${v.finance.termMonths} mo`) });
-    rows.push({ label: 'Total Interest', section: 'Finance', values: vehicles.map(v => financeCalc(v).totalInterest), better: 'low', numericValues: vehicles.map(v => financeCalc(v).totalInterest), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Total Interest', section: 'Finance', values: finResults.map(r => r.totalInterest), better: 'low', numericValues: finResults.map(r => r.totalInterest), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
   }
 
   if (activeSections.has('Lease')) {
-    rows.push({ label: 'Monthly Lease', section: 'Lease', values: vehicles.map(v => leaseCalc(v).monthly), better: 'low', numericValues: vehicles.map(v => leaseCalc(v).monthly), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    const leaseResults = vehicles.map(v => leaseCalc(v));
+    rows.push({ label: 'Monthly Lease', section: 'Lease', values: leaseResults.map(r => r.monthly), better: 'low', numericValues: leaseResults.map(r => r.monthly), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
     rows.push({ label: 'Term', section: 'Lease', values: vehicles.map(v => `${v.lease.termMonths} mo`) });
-    rows.push({ label: 'Residual', section: 'Lease', values: vehicles.map(v => leaseCalc(v).residual), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: 'Total Lease Cost', section: 'Lease', values: vehicles.map(v => leaseCalc(v).totalLease), better: 'low', numericValues: vehicles.map(v => leaseCalc(v).totalLease), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Residual', section: 'Lease', values: leaseResults.map(r => r.residual), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Total Lease Cost', section: 'Lease', values: leaseResults.map(r => r.totalLease), better: 'low', numericValues: leaseResults.map(r => r.totalLease), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
   }
 
   if (activeSections.has('Cost to Own')) {
-    rows.push({ label: '1-yr Cost', section: 'Cost to Own', values: vehicles.map(v => ownershipCalc(v).y1), better: 'low', numericValues: vehicles.map(v => ownershipCalc(v).y1), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: '3-yr Cost', section: 'Cost to Own', values: vehicles.map(v => ownershipCalc(v).y3), better: 'low', numericValues: vehicles.map(v => ownershipCalc(v).y3), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: '5-yr Cost', section: 'Cost to Own', values: vehicles.map(v => ownershipCalc(v).y5), better: 'low', numericValues: vehicles.map(v => ownershipCalc(v).y5), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: 'Annual Energy', section: 'Cost to Own', values: vehicles.map(v => ownershipCalc(v).energy), better: 'low', numericValues: vehicles.map(v => ownershipCalc(v).energy), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    const ownResults = vehicles.map(v => ownershipCalc(v));
+    rows.push({ label: '1-yr Cost', section: 'Cost to Own', values: ownResults.map(r => r.y1), better: 'low', numericValues: ownResults.map(r => r.y1), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: '3-yr Cost', section: 'Cost to Own', values: ownResults.map(r => r.y3), better: 'low', numericValues: ownResults.map(r => r.y3), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: '5-yr Cost', section: 'Cost to Own', values: ownResults.map(r => r.y5), better: 'low', numericValues: ownResults.map(r => r.y5), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Annual Energy', section: 'Cost to Own', values: ownResults.map(r => r.energy), better: 'low', numericValues: ownResults.map(r => r.energy), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
   }
 
   return rows;
@@ -219,7 +222,8 @@ function buildRows(vehicles: Vehicle[], activeSections: Set<Section>): CompareRo
 export default function Compare() {
   const navigate = useNavigate();
   const allVehicles = useStore(s => s.vehicles);
-  const { compareIds, toggleCompare, setCompareIds } = useStore();
+  const compareIds = useStore(s => s.compareIds);
+  const toggleCompare = useStore(s => s.toggleCompare);
   const [rankBy, setRankBy] = useState<RankBy>('selected');
   const [activeSections, setActiveSections] = useState<Set<Section>>(new Set(['Specifications', 'Features', 'Your Ratings', 'Pricing', 'Finance']));
   const [pickerOpen, setPickerOpen] = useState(false);

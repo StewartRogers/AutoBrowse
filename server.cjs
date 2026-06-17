@@ -143,15 +143,22 @@ app.get('/api/scrape-html', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing url query parameter.' });
     }
 
+    const MAX_HTML_BYTES = 5 * 1024 * 1024;
     const response = await fetch(url, {
       headers: {
         'user-agent': 'AutoBrowse/1.0',
         accept: 'text/html,application/xhtml+xml',
       },
+      signal: AbortSignal.timeout(15000),
     });
 
     if (!response.ok) {
       return res.status(502).json({ ok: false, error: `Upstream request failed (${response.status} ${response.statusText}).` });
+    }
+
+    const contentLength = Number(response.headers.get('content-length') || 0);
+    if (contentLength > MAX_HTML_BYTES) {
+      return res.status(502).json({ ok: false, error: `Response too large (${(contentLength / 1024 / 1024).toFixed(1)} MB).` });
     }
 
     const html = await response.text();
@@ -211,7 +218,7 @@ app.get('/api/wiki-photo', async (req, res) => {
 
     for (const title of candidates) {
       const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-      const resp = await fetch(url, { headers: { 'User-Agent': 'AutoBrowse/1.0 (car research app)' } });
+      const resp = await fetch(url, { headers: { 'User-Agent': 'AutoBrowse/1.0 (car research app)' }, signal: AbortSignal.timeout(10000) });
       if (!resp.ok) continue;
       const json = await resp.json();
       const thumb = json?.thumbnail?.source || json?.originalimage?.source;
@@ -230,6 +237,14 @@ app.get('/', (req, res) => {
   res.json({ message: 'AutoBrowse API', db: DB_PATH });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+function shutdown() {
+  server.close();
+  db.close();
+  process.exit(0);
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);

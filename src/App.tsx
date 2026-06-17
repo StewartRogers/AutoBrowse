@@ -11,7 +11,9 @@ import VehicleForm from './features/VehicleForm';
 import type { Vehicle } from './lib/data';
 
 export default function App() {
-  const { replaceVehicle, init, hydrated } = useStore();
+  const replaceVehicle = useStore(s => s.replaceVehicle);
+  const init = useStore(s => s.init);
+  const hydrated = useStore(s => s.hydrated);
 
   useEffect(() => { init(); }, [init]);
   const [formOpen, setFormOpen] = useState(false);

@@ -9,7 +9,7 @@ export default function Matrix() {
   const navigate = useNavigate();
   const vehicles = useStore(s => s.vehicles);
   const matrix = useStore(s => s.matrix);
-  const { setMatrix } = useStore();
+  const setMatrix = useStore(s => s.setMatrix);
 
   const activeVehicles = vehicles.filter(v => !v.archived);
   const results = matrixScores(activeVehicles, matrix);

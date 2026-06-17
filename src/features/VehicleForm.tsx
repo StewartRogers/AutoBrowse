@@ -1,5 +1,5 @@
 // Add / edit vehicle modal
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Modal from '../components/Modal';
 import Field from '../components/Field';
@@ -48,7 +48,10 @@ const PM_OPTIONS = [
 export default function VehicleForm({ initial, onSave, onClose }: Props) {
   // Hooks must all be called unconditionally before any early return
   const navigate = useNavigate();
-  const { addVehicle: storeAdd, updateVehicle } = useStore();
+  const storeAdd = useStore(s => s.addVehicle);
+  const updateVehicle = useStore(s => s.updateVehicle);
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
 
@@ -89,6 +92,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       // Look up specs before creating, so a failed lookup doesn't leave an
       // orphan vehicle behind if the user cancels instead of retrying.
       const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
+      if (!mountedRef.current) return;
       if (!result.ok) {
         setCreating(false);
         setCreateError(result.error);
@@ -97,6 +101,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
       const { specs, features, powertrain, bodyStyle, photoUrl: geminiPhoto } = result.data;
       const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim()) || geminiPhoto;
+      if (!mountedRef.current) return;
       addAndOpen({
         ...(powertrain ? { powertrain } : {}),
         ...(bodyStyle  ? { bodyStyle  } : {}),
@@ -190,6 +195,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     setAiError('');
     setAiLog('');
     const result = await scrapeVehicleFromUrl(v.listingUrl.trim());
+    if (!mountedRef.current) return;
     if (!result.ok) {
       setAiStatus('error');
       setAiError(result.error);
@@ -218,6 +224,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     setSpecsError('');
     setSpecsLog('');
     const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
+    if (!mountedRef.current) return;
     if (!result.ok) {
       setSpecsStatus('error');
       setSpecsError(result.error);
@@ -225,6 +232,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     }
     const { specs, features, powertrain, bodyStyle, photoUrl: geminiPhoto } = result.data;
     const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim()) || geminiPhoto;
+    if (!mountedRef.current) return;
     setV(prev => ({
       ...prev,
       ...(powertrain ? { powertrain } : {}),
@@ -247,6 +255,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     setHtmlStatus('loading');
     setHtmlError('');
     const result = await scrapeVehicleHtmlFromUrl(v.listingUrl.trim());
+    if (!mountedRef.current) return;
     if (!result.ok) {
       setHtmlStatus('error');
       setHtmlError(result.error);
