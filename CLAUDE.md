@@ -8,13 +8,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev          # start both Express API (port 3000) and Vite dev server concurrently
 npm run dev:api      # Express API only
 npm run dev:vite     # Vite only
-npm run build        # tsc + vite build
+npm run build        # tsc -b + vite build
 npm run lint         # eslint
 npm run test         # vitest run (single pass)
 npm run test:watch   # vitest watch mode
 ```
 
 Run a single test file: `npx vitest run src/__tests__/data.test.ts`
+
+**Type-checking:** The root `tsconfig.json` is references-only (no `include`). Running `npx tsc --noEmit` checks nothing. Always use `npx tsc -b` to type-check via project references.
 
 ## Environment
 
@@ -47,6 +49,15 @@ VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
 - `lookupVehicleSpecs(year, make, model, trim)` — specs-only lookup, no URL needed
 - Both use `VITE_GEMINI_API_KEY` / `VITE_GEMINI_MODEL` from env. Friendly error messages are extracted from Gemini's error JSON in `friendlyError()`.
 - HTML fallback (`src/lib/htmlScrape.ts`) hits `GET /api/scrape-html?url=...` which fetches the page server-side and parses `og:*` meta tags.
+- Wikipedia photo fallback (`GET /api/wiki-photo?year=&make=&model=`) tries progressively simpler Wikipedia article titles to find a vehicle photo.
+
+**Formatters (`src/lib/fmt.ts`):** `money()`, `moneyK()`, `pct()`, `score()`, `vehicleName()`. Uses `en-CA` locale (Canadian dollar formatting). All UI numbers should go through these.
+
+**Features (`src/features/`):** `VehicleForm` is the main vehicle add/edit modal (handles both AI fill and manual entry). `ExcludeModal` manages matrix exclusions.
+
+**Layout:** `AppShell` (`src/layouts/AppShell.tsx`) wraps all pages with the nav sidebar.
+
+**REST API endpoints (server.cjs):** `GET/POST /api/vehicles`, `PUT/DELETE /api/vehicles/:id`, `GET/PUT /api/matrix`, `GET /api/scrape-html?url=`, `GET /api/wiki-photo?year=&make=&model=`. Vehicles and matrix are stored as JSON blobs in SQLite — the schema has no column-per-field.
 
 **Pages:** `Dashboard`, `Garage`, `VehicleDetail`, `Compare`, `Matrix` — each paired with a `.module.css`. Routes are defined in `src/App.tsx`. `VehicleDetail` has tabs: Overview, Specifications, Ratings, Test Drive, Pricing, Finance, Lease, Cost to Own, Attachments.
 
