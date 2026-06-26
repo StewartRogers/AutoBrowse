@@ -1,4 +1,3 @@
-import { GoogleGenAI } from '@google/genai';
 import type { Vehicle, Features } from './data';
 
 
@@ -184,23 +183,12 @@ export async function lookupVehicleSpecs(
   model: string,
   trim: string,
 ): Promise<SpecsLookupResult> {
-  const { apiKey, model: aiModel } = getGeminiConfig();
-
-  if (!apiKey) {
-    return { ok: false, error: 'No Gemini API key set. Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.' };
-  }
+  const prompt = `${SPECS_PROMPT}\n\nVehicle: ${year} ${make} ${model}${trim ? ' ' + trim : ''}`;
+  const res = await callGemini(prompt);
+  if (!res.ok) return { ok: false, error: res.error };
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-    const prompt = `${SPECS_PROMPT}\n\nVehicle: ${year} ${make} ${model}${trim ? ' ' + trim : ''}`;
-
-    const response = await ai.models.generateContent({
-      model: aiModel,
-      contents: prompt,
-      config: { temperature: 0 },
-    });
-
-    const text = response.text ?? '';
+    const text = res.text;
     const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { ok: false, error: 'No specs returned. Try entering make/model/year/trim more specifically.' };
 
@@ -256,32 +244,29 @@ export type ScrapeResult = {
   error: string;
 };
 
-function getGeminiConfig(): { apiKey: string; model: string } {
-  return {
-    apiKey: import.meta.env.VITE_GEMINI_API_KEY ?? '',
-    model:  import.meta.env.VITE_GEMINI_MODEL  || 'gemini-3.1-flash-lite',
-  };
+// Calls the server-side Gemini proxy (POST /api/gemini). The API key lives only on
+// the server, so it is never bundled into or exposed by the browser app.
+async function callGemini(contents: string): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  try {
+    const r = await fetch('/api/gemini', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents }),
+    });
+    const j = await r.json();
+    if (!j?.ok) return { ok: false, error: friendlyError(j?.error ?? 'Gemini request failed.') };
+    return { ok: true, text: j.text ?? '' };
+  } catch (err: unknown) {
+    return { ok: false, error: friendlyError(err instanceof Error ? err.message : String(err)) };
+  }
 }
 
 export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
-  const { apiKey, model } = getGeminiConfig();
-
-  if (!apiKey) {
-    return { ok: false, error: 'No Gemini API key set. Add VITE_GEMINI_API_KEY to your .env file and restart the dev server.' };
-  }
+  const res = await callGemini(`${EXTRACT_PROMPT}\n\nURL: ${url}`);
+  if (!res.ok) return { ok: false, error: res.error };
 
   try {
-    const ai = new GoogleGenAI({ apiKey });
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: `${EXTRACT_PROMPT}\n\nURL: ${url}`,
-      config: {
-        temperature: 0,
-      },
-    });
-
-    const text = response.text ?? '';
+    const text = res.text;
     const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
     if (!jsonMatch) return { ok: false, error: 'Gemini returned no JSON. The listing page may block scrapers.' };
 
@@ -411,8 +396,8 @@ function friendlyError(raw: string): string {
         return 'Rate limit reached — you\'ve hit your Gemini API quota. Wait a minute then try again, or check your plan at ai.dev/rate-limit.';
       }
       if (code === 400) return `Bad request: ${parsed?.error?.message ?? raw}`;
-      if (code === 401 || code === 403) return 'API key rejected. Check VITE_GEMINI_API_KEY in your .env file.';
-      if (code === 404) return `Model not found — check VITE_GEMINI_MODEL in your .env. Raw: ${parsed?.error?.message ?? raw}`;
+      if (code === 401 || code === 403) return 'API key rejected. Check GEMINI_API_KEY in your .env file.';
+      if (code === 404) return `Model not found — check GEMINI_MODEL in your .env. Raw: ${parsed?.error?.message ?? raw}`;
       if (parsed?.error?.message) return parsed.error.message;
     }
   } catch { /* fall through */ }

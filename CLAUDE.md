@@ -29,9 +29,9 @@ VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
 
 ## Architecture
 
-**Two-process dev setup:** Vite proxies all `/api/*` requests to the Express server on port 3000 (`vite.config.ts`). The Express server (`server.cjs`) is CommonJS (not ESM) because it runs directly with Node and uses `better-sqlite3`.
+**Two-process dev setup:** Vite proxies all `/api/*` requests to the Express server on port 3000 (`vite.config.ts`). The Express server (`server.js`) is ESM and exports the `app` (it only calls `listen()` when run directly, so a serverless handler can import it). Requires Node 22 (`engines` field + `.nvmrc`).
 
-**Data persistence:** SQLite via `better-sqlite3` in `garage.db`. The schema stores vehicles and matrix config as JSON blobs — no column-per-field. All mutations go through `useStore.ts`, which calls the REST API fire-and-forget (mutations are optimistic).
+**Data persistence:** libSQL via `@libsql/client` (`db.js`). Connection is env-driven: with no env it falls back to a local SQLite file (`file:garage.db`) so dev runs fully offline; set `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN` to use a hosted Turso DB (production/Vercel). The client API is async — all server route handlers `await db.execute(...)`. The schema stores vehicles and matrix config as JSON blobs — no column-per-field. All mutations go through `useStore.ts`, which calls the REST API fire-and-forget (mutations are optimistic).
 
 **State management:** Single Zustand store (`src/store/useStore.ts`). `init()` loads from the API on app mount; if the DB is empty it seeds demo vehicles. All vehicle mutations update local state immediately, then persist to the API with `.catch(console.error)`.
 
@@ -47,7 +47,7 @@ VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
 **AI features (`src/lib/geminiScrape.ts`):**
 - `scrapeVehicleFromUrl(url)` — sends the URL to Gemini; model uses training knowledge to return vehicle fields as JSON
 - `lookupVehicleSpecs(year, make, model, trim)` — specs-only lookup, no URL needed
-- Both use `VITE_GEMINI_API_KEY` / `VITE_GEMINI_MODEL` from env. Friendly error messages are extracted from Gemini's error JSON in `friendlyError()`.
+- Both call the server-side proxy `POST /api/gemini` (the browser never holds the key). The server (`server.js`) reads `GEMINI_API_KEY` / `GEMINI_MODEL` (server-only — no `VITE_` prefix) and forwards to Gemini. Friendly error messages are extracted from Gemini's error JSON in `friendlyError()` on the client.
 - HTML fallback (`src/lib/htmlScrape.ts`) hits `GET /api/scrape-html?url=...` which fetches the page server-side and parses `og:*` meta tags.
 - Wikipedia photo fallback (`GET /api/wiki-photo?year=&make=&model=`) tries progressively simpler Wikipedia article titles to find a vehicle photo.
 
@@ -57,7 +57,9 @@ VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
 
 **Layout:** `AppShell` (`src/layouts/AppShell.tsx`) wraps all pages with the nav sidebar.
 
-**REST API endpoints (server.cjs):** `GET/POST /api/vehicles`, `PUT/DELETE /api/vehicles/:id`, `GET/PUT /api/matrix`, `GET /api/scrape-html?url=`, `GET /api/wiki-photo?year=&make=&model=`. Vehicles and matrix are stored as JSON blobs in SQLite — the schema has no column-per-field.
+**REST API endpoints (server.js):** `GET/POST /api/vehicles`, `PUT/DELETE /api/vehicles/:id`, `GET/PUT /api/matrix`, `GET /api/scrape-html?url=`, `GET /api/wiki-photo?year=&make=&model=`. Vehicles and matrix are stored as JSON blobs in libSQL/SQLite — the schema has no column-per-field.
+
+**Deployment (Vercel):** `api/index.js` re-exports the Express `app` as a single serverless function. `vercel.json` rewrites `/api/*` to that function and falls everything else back to `index.html` (SPA). Locally the same `app` is served by `server.js` via the Vite proxy; nothing about local dev changes. All required env vars are **server-side** (none are `VITE_`/public): `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `GEMINI_API_KEY`, `GEMINI_MODEL`. Set them in the Vercel dashboard. Locally, `node` loads them via `--env-file-if-exists=.env` (see the `dev`/`dev:api` scripts).
 
 **Pages:** `Dashboard`, `Garage`, `VehicleDetail`, `Compare`, `Matrix` — each paired with a `.module.css`. Routes are defined in `src/App.tsx`. `VehicleDetail` has tabs: Overview, Specifications, Ratings, Test Drive, Pricing, Finance, Lease, Cost to Own, Attachments.
 

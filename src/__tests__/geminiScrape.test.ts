@@ -1,47 +1,51 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// Must be declared with vi.hoisted so it's available inside the vi.mock factory (which is hoisted)
-const mockGenerateContent = vi.hoisted(() => vi.fn());
-
-vi.mock('@google/genai', () => ({
-  // Must use a regular function (not arrow) so `new GoogleGenAI()` works
-  GoogleGenAI: vi.fn().mockImplementation(function () {
-    return { models: { generateContent: mockGenerateContent } };
-  }),
-}));
-
-// Import after mocks are set up
 import { scrapeVehicleFromUrl, lookupVehicleSpecs } from '../lib/geminiScrape';
 
+// The client no longer talks to the Gemini SDK directly — the API key lives only on
+// the server. The client POSTs the prompt to /api/gemini and gets back { ok, text }.
+// So we mock global fetch to stand in for that server proxy.
+const fetchMock = vi.fn();
+
 beforeEach(() => {
-  vi.stubEnv('VITE_GEMINI_API_KEY', 'test-api-key');
-  vi.stubEnv('VITE_GEMINI_MODEL', 'gemini-test');
-  mockGenerateContent.mockReset();
+  fetchMock.mockReset();
+  vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
-  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
 });
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
+// Proxy succeeded and Gemini returned the given JSON object as its text.
 function geminiReturns(json: unknown) {
-  mockGenerateContent.mockResolvedValue({ text: JSON.stringify(json) });
+  fetchMock.mockResolvedValue({ json: async () => ({ ok: true, text: JSON.stringify(json) }) });
+}
+
+// Proxy succeeded but Gemini returned raw (non-JSON) text.
+function geminiReturnsText(text: unknown) {
+  fetchMock.mockResolvedValue({ json: async () => ({ ok: true, text }) });
+}
+
+// Proxy reported a failure (the server forwards Gemini's error message verbatim).
+function proxyError(errorMessage: string) {
+  fetchMock.mockResolvedValue({ json: async () => ({ ok: false, error: errorMessage }) });
 }
 
 function geminiThrowsWithJson(errorJson: unknown) {
-  mockGenerateContent.mockRejectedValue(new Error(JSON.stringify(errorJson)));
+  proxyError(JSON.stringify(errorJson));
 }
 
 // ─── scrapeVehicleFromUrl ────────────────────────────────────────────────────
 
 describe('scrapeVehicleFromUrl', () => {
-  it('returns error immediately when API key is missing', async () => {
-    vi.stubEnv('VITE_GEMINI_API_KEY', '');
+  it('surfaces the server error when the API key is missing on the server', async () => {
+    proxyError('Server is missing GEMINI_API_KEY. Set it in the environment (no VITE_ prefix).');
     const result = await scrapeVehicleFromUrl('https://example.com');
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toContain('VITE_GEMINI_API_KEY');
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    if (!result.ok) expect(result.error).toContain('GEMINI_API_KEY');
+    expect(fetchMock).toHaveBeenCalledWith('/api/gemini', expect.objectContaining({ method: 'POST' }));
   });
 
   it('parses top-level vehicle fields from JSON response', async () => {
@@ -111,14 +115,14 @@ describe('scrapeVehicleFromUrl', () => {
   });
 
   it('returns error when Gemini response contains no JSON', async () => {
-    mockGenerateContent.mockResolvedValue({ text: 'Sorry, I cannot find data for that URL.' });
+    geminiReturnsText('Sorry, I cannot find data for that URL.');
     const result = await scrapeVehicleFromUrl('https://example.com');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('no JSON');
   });
 
-  it('returns error when response.text is null/undefined', async () => {
-    mockGenerateContent.mockResolvedValue({ text: null });
+  it('returns error when proxy text is null/undefined', async () => {
+    geminiReturnsText(null);
     const result = await scrapeVehicleFromUrl('https://example.com');
     expect(result.ok).toBe(false);
   });
@@ -152,7 +156,7 @@ describe('scrapeVehicleFromUrl', () => {
   });
 
   it('returns raw error message when no JSON in the error', async () => {
-    mockGenerateContent.mockRejectedValue(new Error('network timeout'));
+    proxyError('network timeout');
     const result = await scrapeVehicleFromUrl('https://example.com');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toBe('network timeout');
@@ -162,11 +166,11 @@ describe('scrapeVehicleFromUrl', () => {
 // ─── lookupVehicleSpecs ──────────────────────────────────────────────────────
 
 describe('lookupVehicleSpecs', () => {
-  it('returns error immediately when API key is missing', async () => {
-    vi.stubEnv('VITE_GEMINI_API_KEY', '');
+  it('surfaces the server error when the API key is missing on the server', async () => {
+    proxyError('Server is missing GEMINI_API_KEY. Set it in the environment (no VITE_ prefix).');
     const result = await lookupVehicleSpecs(2024, 'Toyota', 'RAV4', 'XLE');
     expect(result.ok).toBe(false);
-    expect(mockGenerateContent).not.toHaveBeenCalled();
+    if (!result.ok) expect(result.error).toContain('GEMINI_API_KEY');
   });
 
   it('parses specs and coerces numeric strings', async () => {
@@ -204,7 +208,7 @@ describe('lookupVehicleSpecs', () => {
   });
 
   it('returns error when Gemini response has no JSON', async () => {
-    mockGenerateContent.mockResolvedValue({ text: 'No specs found.' });
+    geminiReturnsText('No specs found.');
     const result = await lookupVehicleSpecs(2024, 'Toyota', 'RAV4', 'XLE');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContain('No specs returned');

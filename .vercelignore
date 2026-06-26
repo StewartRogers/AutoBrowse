@@ -1,0 +1,14 @@
+# Never upload local secrets or personal data to Vercel.
+.env
+.env.*
+.env.local
+
+# Local SQLite database (personal vehicle data) — production uses Turso.
+garage.db
+garage.db-shm
+garage.db-wal
+
+# Build/install artifacts (Vercel builds these itself)
+node_modules
+dist
+coverage

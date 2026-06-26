@@ -4,10 +4,13 @@
   "description": "Local-first personal car-shopping workbook",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "dev": "concurrently -n api,vite -c cyan,green \"node server.cjs\" \"vite --host 0.0.0.0\"",
+    "dev": "concurrently -n api,vite -c cyan,green \"node --env-file-if-exists=.env server.js\" \"vite --host 0.0.0.0\"",
     "dev:vite": "vite",
-    "dev:api": "node server.cjs",
+    "dev:api": "node --env-file-if-exists=.env server.js",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
@@ -16,7 +19,7 @@
   },
   "dependencies": {
     "@google/genai": "^2.8.0",
-    "better-sqlite3": "^12.10.0",
+    "@libsql/client": "^0.15.0",
     "express": "^5.2.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -27,7 +30,6 @@
     "@eslint/js": "^10.0.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.12.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -43,5 +45,9 @@
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "vitest": "^4.1.8"
+  },
+  "allowScripts": {
+    "@google/genai@2.8.0": true,
+    "protobufjs@7.6.4": true
   }
 }
