@@ -8,6 +8,7 @@ import express from 'express';
 import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { db, isLocalFile, initSchema } from './db.js';
+import { installAuthRoutes, requireAuth } from './auth.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,6 +37,15 @@ app.use(async (req, res, next) => {
     res.status(500).json({ ok: false, error: String(err.message) });
   }
 });
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+// Public auth endpoints (login/logout/status) are registered first so they stay
+// reachable without a session. Everything mounted after requireAuth is gated:
+// the API — not just the UI — is the real security boundary, since the SPA shell
+// is served statically and anyone can call /api/* directly.
+
+installAuthRoutes(app);
+app.use('/api', requireAuth);
 
 // ─── Vehicle endpoints ──────────────────────────────────────────────────────
 

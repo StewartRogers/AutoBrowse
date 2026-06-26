@@ -1,5 +1,7 @@
+import { useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { fetchAuthStatus, logout } from '../lib/authApi';
 import Icon from '../components/Icon';
 import styles from './AppShell.module.css';
 
@@ -13,6 +15,19 @@ export default function AppShell({ children, onAddVehicle }: Props) {
   const vehicles = useStore(s => s.vehicles);
   const activeCount = vehicles.filter(v => !v.archived).length;
   const location = useLocation();
+
+  // Show the sign-out control only when the server has auth enabled.
+  const [authRequired, setAuthRequired] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    fetchAuthStatus().then(s => { if (alive) setAuthRequired(s.required); });
+    return () => { alive = false; };
+  }, []);
+
+  const handleLogout = async () => {
+    await logout();
+    window.location.reload(); // re-runs the gate → back to the login screen
+  };
 
   // Keep "Garage" highlighted for /vehicle/:id too
   const garageActive =
@@ -69,6 +84,12 @@ export default function AppShell({ children, onAddVehicle }: Props) {
           <div className={styles.footerNote}>
             <span className="num">{activeCount}</span> active · saved on this device
           </div>
+          {authRequired && (
+            <button className={styles.logoutBtn} onClick={handleLogout}>
+              <Icon name="logout" size={15} />
+              Sign out
+            </button>
+          )}
         </div>
       </aside>
 
