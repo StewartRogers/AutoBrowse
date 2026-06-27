@@ -20,11 +20,11 @@ Run a single test file: `npx vitest run src/__tests__/data.test.ts`
 
 ## Environment
 
-Copy `.env.example` to `.env` and add a Gemini API key (from aistudio.google.com) before using AI features:
+Copy `.env.example` to `.env` and add a Gemini API key (from aistudio.google.com) before using AI features. The key is **server-side only** (no `VITE_` prefix) — the API proxies Gemini so it is never shipped to the browser:
 
 ```
-VITE_GEMINI_API_KEY=AIza...
-VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-3.1-flash-lite   # optional override
 ```
 
 ## Architecture
@@ -69,7 +69,7 @@ VITE_GEMINI_MODEL=gemini-2.0-flash   # optional override
 
 **Styling:** CSS Modules per component/page. Global design tokens in `src/styles/tokens.css`; base resets in `src/styles/global.css`. No CSS-in-JS, no Tailwind.
 
-**Tests:** Vitest + jsdom. Only `src/lib/data.ts` has tests (`src/__tests__/data.test.ts`). Tests cover all financial math and matrix scoring.
+**Tests:** Vitest + jsdom. Suites live in `src/__tests__/`: `data.test.ts` (financial math + matrix scoring), `fmt.test.ts` (formatters), `geminiScrape.test.ts` and `htmlScrape.test.ts` (AI/scrape JSON parsing), and `store.test.ts` (Zustand store).
 
 ## Key invariants
 
