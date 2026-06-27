@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      "Bash(npx vercel *)",
+      "Bash(awk -F= '/^TURSO_DATABASE_URL=/{v=substr\\($0,index\\($0,\"=\"\\)+1\\); gsub\\(/\"/,\"\",v\\); print \"TURSO_DATABASE_URL length=\"length\\(v\\)\" scheme=\"substr\\(v,1,8\\)} /^TURSO_AUTH_TOKEN=/{v=substr\\($0,index\\($0,\"=\"\\)+1\\); gsub\\(/\"/,\"\",v\\); print \"TURSO_AUTH_TOKEN length=\"length\\(v\\)}' .env.prod.check)",
+      "Bash(awk -F= '/^[A-Z]/{k=$1; v=substr\\($0,index\\($0,\"=\"\\)+1\\); gsub\\(/\"/,\"\",v\\); print k\" -> length=\"length\\(v\\)}' .env.prod.check)"
+    ]
+  }
+}
