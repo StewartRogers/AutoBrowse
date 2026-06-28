@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
   SPEC_FIELDS, FEATURE_FIELDS, RATING_CATS, TESTDRIVE_CATS,
-  financeCalc, leaseCalc, ownershipCalc, outTheDoor,
+  financeCalc, leaseCalc, ownershipCalc, outTheDoor, sellingPriceOf,
   type Vehicle,
 } from '../lib/data';
 import { money } from '../lib/fmt';
@@ -186,9 +186,9 @@ function buildRows(vehicles: Vehicle[], activeSections: Set<Section>): CompareRo
 
   if (activeSections.has('Pricing')) {
     rows.push({ label: 'MSRP', section: 'Pricing', values: vehicles.map(v => v.pricing.msrp), better: 'low', numericValues: vehicles.map(v => v.pricing.msrp), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: 'Selling Price', section: 'Pricing', values: vehicles.map(v => v.pricing.sellingPrice), better: 'low', numericValues: vehicles.map(v => v.pricing.sellingPrice), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Selling Price', section: 'Pricing', values: vehicles.map(v => sellingPriceOf(v.pricing)), better: 'low', numericValues: vehicles.map(v => sellingPriceOf(v.pricing)), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
     rows.push({ label: 'Incentives', section: 'Pricing', values: vehicles.map(v => v.pricing.incentives), better: 'high', numericValues: vehicles.map(v => v.pricing.incentives), renderCell: (val) => <span className="num" style={{ color: (val as number) > 0 ? 'var(--good)' : undefined }}>{val ? money(val as number) : '—'}</span> });
-    rows.push({ label: 'Out-the-door', section: 'Pricing', values: vehicles.map(v => { const p = v.pricing; const t = Math.max(0, p.sellingPrice-p.tradeValue)*(p.taxRate/100); return p.sellingPrice + t + p.fees - p.incentives; }), better: 'low', numericValues: vehicles.map(v => { const p = v.pricing; const t = Math.max(0,p.sellingPrice-p.tradeValue)*(p.taxRate/100); return p.sellingPrice+t+p.fees-p.incentives; }), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
+    rows.push({ label: 'Out-the-door', section: 'Pricing', values: vehicles.map(v => outTheDoor(v.pricing)), better: 'low', numericValues: vehicles.map(v => outTheDoor(v.pricing)), renderCell: (val) => <span className="num">{val ? money(val as number) : '—'}</span> });
   }
 
   if (activeSections.has('Finance')) {
@@ -239,7 +239,7 @@ export default function Compare() {
     if (rankBy === 'selected') return base;
     return [...base].sort((a, b) => {
       switch (rankBy) {
-        case 'price': return (a.pricing.sellingPrice || a.pricing.msrp) - (b.pricing.sellingPrice || b.pricing.msrp);
+        case 'price': return sellingPriceOf(a.pricing) - sellingPriceOf(b.pricing);
         case 'payment': return financeCalc(a).monthly - financeCalc(b).monthly;
         case 'lease': return leaseCalc(a).monthly - leaseCalc(b).monthly;
         case 'ownership': return ownershipCalc(a).y5 - ownershipCalc(b).y5;

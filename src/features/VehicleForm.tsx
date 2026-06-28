@@ -9,10 +9,42 @@ import { scrapeVehicleFromUrl, lookupVehicleSpecs } from '../lib/geminiScrape';
 import { scrapeVehicleHtmlFromUrl } from '../lib/htmlScrape';
 import { useStore } from '../store/useStore';
 
-async function fetchWikiPhoto(year: number, make: string, model: string): Promise<string | null> {
+// Read a local image file and downscale it (max ~1280px, JPEG) so the data URL we
+// store on the vehicle stays small enough for the API body limit and the DB blob.
+async function imageFileToDataUrl(file: File, maxDim = 1280, quality = 0.82): Promise<string> {
+  const original = await new Promise<string>((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(fr.result as string);
+    fr.onerror = () => rej(fr.error);
+    fr.readAsDataURL(file);
+  });
+  const img = await new Promise<HTMLImageElement>((res, rej) => {
+    const im = new Image();
+    im.onload = () => res(im);
+    im.onerror = rej;
+    im.src = original;
+  });
+  const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+  if (scale === 1 && file.size < 400_000) return original; // already small enough
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(img.width * scale);
+  canvas.height = Math.round(img.height * scale);
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return original;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', quality);
+}
+
+async function fetchWikiPhoto(year: number, make: string, model: string, signal?: AbortSignal): Promise<string | null> {
   try {
     const params = new URLSearchParams({ year: String(year), make, model });
-    const resp = await fetch(`/api/wiki-photo?${params}`);
+    // Bounded wait: the photo is a nice-to-have, so a slow/hung lookup must not
+    // freeze the dialog. On timeout, caller-cancel, or any error we fall back to
+    // no photo. The timeout is merged with the caller's signal so either aborts.
+    const timeout = AbortSignal.timeout(8_000);
+    const resp = await fetch(`/api/wiki-photo?${params}`, {
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    });
     if (!resp.ok) return null;
     const json = await resp.json() as { ok: boolean; photoUrl?: string };
     return json.ok && json.photoUrl ? json.photoUrl : null;
@@ -51,7 +83,17 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   const storeAdd = useStore(s => s.addVehicle);
   const updateVehicle = useStore(s => s.updateVehicle);
   const mountedRef = useRef(true);
-  useEffect(() => () => { mountedRef.current = false; }, []);
+  // In-flight add-mode lookup, so Cancel / closing the dialog can abort it.
+  const createAbortRef = useRef<AbortController | null>(null);
+  // Set `mountedRef` in the effect *body*, not just the cleanup. StrictMode (dev)
+  // mounts → unmounts (cleanup sets false) → remounts; without restoring true on
+  // setup, mountedRef stays false and every lookup bails at the `!mountedRef`
+  // guard — the dialog freezes on "Looking up specs…". This is why it worked in
+  // production (no StrictMode double-invoke) but not locally.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; createAbortRef.current?.abort(); };
+  }, []);
 
   const [v, setV] = useState<Vehicle>(() => initial ? { ...initial } : blankVehicle());
 
@@ -86,22 +128,33 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
 
     async function handleCreate() {
       if (!canCreate || creating) return;
+      const ac = new AbortController();
+      createAbortRef.current = ac;
       setCreating(true);
       setCreateError('');
 
+      // Two phases — log timing so a slow/hung step is obvious in the console.
       // Look up specs before creating, so a failed lookup doesn't leave an
       // orphan vehicle behind if the user cancels instead of retrying.
-      const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim());
-      if (!mountedRef.current) return;
+      const label = `${v.year} ${v.make.trim()} ${v.model.trim()}`.trim();
+      const tSpecs = performance.now();
+      console.debug(`[add] specs lookup → ${label}`);
+      const result = await lookupVehicleSpecs(v.year, v.make.trim(), v.model.trim(), v.trim.trim(), ac.signal);
+      if (!mountedRef.current || ac.signal.aborted) { console.debug('[add] cancelled during specs lookup'); return; }
       if (!result.ok) {
+        console.debug(`[add] specs lookup failed in ${Math.round(performance.now() - tSpecs)}ms: ${result.error}`);
         setCreating(false);
         setCreateError(result.error);
         return;
       }
+      console.debug(`[add] specs lookup ok in ${Math.round(performance.now() - tSpecs)}ms`);
 
       const { specs, features, powertrain, bodyStyle, photoUrl: geminiPhoto } = result.data;
-      const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim()) || geminiPhoto;
-      if (!mountedRef.current) return;
+      const tPhoto = performance.now();
+      console.debug('[add] photo lookup →');
+      const photoUrl = await fetchWikiPhoto(v.year, v.make.trim(), v.model.trim(), ac.signal) || geminiPhoto;
+      if (!mountedRef.current || ac.signal.aborted) { console.debug('[add] cancelled during photo lookup'); return; }
+      console.debug(`[add] photo lookup done in ${Math.round(performance.now() - tPhoto)}ms (photo=${photoUrl ? 'found' : 'none'})`);
       addAndOpen({
         ...(powertrain ? { powertrain } : {}),
         ...(bodyStyle  ? { bodyStyle  } : {}),
@@ -111,14 +164,21 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       });
     }
 
+    // Always available, even mid-lookup: abort the in-flight request and close.
+    function cancelCreate() {
+      createAbortRef.current?.abort();
+      setCreating(false);
+      onClose();
+    }
+
     return (
       <Modal
         title="Add a vehicle"
-        onClose={() => { if (!creating) onClose(); }}
+        onClose={cancelCreate}
         width={420}
         footer={
           <>
-            <button className="btn btn-secondary" onClick={onClose} disabled={creating}>Cancel</button>
+            <button className="btn btn-secondary" onClick={cancelCreate}>Cancel</button>
             {createError && (
               <button className="btn btn-secondary" disabled={creating} onClick={() => addAndOpen()}>
                 Add without specs
@@ -362,8 +422,8 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           <Field label="MSRP">
             <input className="input num" type="number" value={v.pricing.msrp || ''} onChange={e => setPricing({ msrp: Number(e.target.value) })} placeholder="38990" />
           </Field>
-          <Field label="Selling Price">
-            <input className="input num" type="number" value={v.pricing.sellingPrice || ''} onChange={e => setPricing({ sellingPrice: Number(e.target.value) })} placeholder="37800" />
+          <Field label="Discount" hint="Selling price = MSRP − discount">
+            <input className="input num" type="number" value={v.pricing.discount || ''} onChange={e => setPricing({ discount: Number(e.target.value) })} placeholder="1190" />
           </Field>
           <Field label="Tax Rate (%)">
             <input className="input num" type="number" step="0.01" value={v.pricing.taxRate} onChange={e => setPricing({ taxRate: Number(e.target.value) })} />
@@ -415,40 +475,61 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
           )}
         </Field>
 
-        {/* Photo preview */}
-        {v.photoUrl && (
-          <Field label="Photo">
-            <div style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)', minHeight: 48 }}>
-              {!photoBlocked ? (
-                <img
-                  key={v.photoUrl}
-                  src={v.photoUrl}
-                  alt="Vehicle"
-                  style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }}
-                  onError={() => setPhotoBlocked(true)}
-                />
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px', fontSize: 12, color: 'var(--ink-muted, #888)' }}>
-                  ⚠️ Image blocked by source site —{' '}
-                  <a href={v.photoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>
-                    open in new tab
-                  </a>{' '}to copy a working URL.
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-              <input
-                className="input"
-                type="url"
-                value={v.photoUrl}
-                onChange={e => { set({ photoUrl: e.target.value }); setPhotoBlocked(false); }}
-                placeholder="https://..."
-                style={{ flex: 1, fontSize: 12 }}
+        {/* Photo — always available so a photo can be added/replaced even when the
+            downloaded one is missing or blocked by the source site. */}
+        <Field label="Photo">
+          {v.photoUrl && !photoBlocked && (
+            <div style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--paper-2)', border: '1px solid var(--line)' }}>
+              <img
+                key={v.photoUrl}
+                src={v.photoUrl}
+                alt="Vehicle"
+                style={{ width: '100%', maxHeight: 180, objectFit: 'cover', display: 'block' }}
+                onError={() => setPhotoBlocked(true)}
               />
-              <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { set({ photoUrl: '' }); setPhotoBlocked(false); }}>Clear</button>
             </div>
-          </Field>
-        )}
+          )}
+          {v.photoUrl && photoBlocked && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', padding: '12px 14px', fontSize: 12, color: 'var(--ink-muted, #888)', background: 'var(--paper-2)', border: '1px solid var(--line)', borderRadius: 8 }}>
+              ⚠️ This image couldn’t load —{' '}
+              <a href={v.photoUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'inherit', textDecoration: 'underline' }}>open it</a>{' '}to check the URL, or upload an image below.
+            </div>
+          )}
+          {!v.photoUrl && (
+            <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--ink-faint)', background: 'var(--paper-2)', border: '1px dashed var(--line)', borderRadius: 8 }}>
+              No photo yet — paste a URL or upload an image from your device.
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+            <input
+              className="input"
+              type="url"
+              value={v.photoUrl}
+              onChange={e => { set({ photoUrl: e.target.value }); setPhotoBlocked(false); }}
+              placeholder="https://..."
+              style={{ flex: 1, fontSize: 12 }}
+            />
+            <label className="btn btn-secondary" style={{ fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Upload
+              <input
+                type="file"
+                accept="image/*"
+                style={{ display: 'none' }}
+                onChange={async e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = ''; // let the same file be re-picked
+                  if (!file) return;
+                  try {
+                    const url = await imageFileToDataUrl(file);
+                    set({ photoUrl: url });
+                    setPhotoBlocked(false);
+                  } catch { /* ignore unreadable file */ }
+                }}
+              />
+            </label>
+            {v.photoUrl && <button className="btn btn-secondary" style={{ fontSize: 12 }} onClick={() => { set({ photoUrl: '' }); setPhotoBlocked(false); }}>Clear</button>}
+          </div>
+        </Field>
 
         {/* Accent color */}
         <Field label="Accent Color">

@@ -114,15 +114,19 @@
 .specGroup { display: flex; flex-direction: column; gap: 12px; }
 .specRows { display: flex; flex-direction: column; gap: 1px; }
 .specRow {
-  display: flex;
+  display: grid;
+  grid-template-columns: 210px 240px;
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--line-soft);
   gap: 16px;
 }
 .specRow:last-child { border-bottom: none; }
-.specLabel { flex: 1; font-size: 13.5px; color: var(--ink-soft); }
+.specLabel { font-size: 13.5px; color: var(--ink-soft); }
 .specUnit { color: var(--ink-faint); font-size: 11px; }
+/* Every value control fills its column, so all fields line up at one width. */
+.specRow input,
+.specRow select { width: 100%; min-width: 0; }
 
 /* Ratings */
 .ratingSummary { padding: 16px 20px; margin-bottom: 4px; }

@@ -1,4 +1,4 @@
-import type { Vehicle, Features } from './data';
+import { makeFee, type Vehicle, type Features } from './data';
 
 
 const EXTRACT_PROMPT = `You are a car data expert. Given a URL, identify the vehicle and return its details
@@ -182,9 +182,10 @@ export async function lookupVehicleSpecs(
   make: string,
   model: string,
   trim: string,
+  signal?: AbortSignal,
 ): Promise<SpecsLookupResult> {
   const prompt = `${SPECS_PROMPT}\n\nVehicle: ${year} ${make} ${model}${trim ? ' ' + trim : ''}`;
-  const res = await callGemini(prompt);
+  const res = await callGemini(prompt, signal);
   if (!res.ok) return { ok: false, error: res.error };
 
   try {
@@ -244,20 +245,43 @@ export type ScrapeResult = {
   error: string;
 };
 
+// How long to wait for the Gemini proxy before giving up. LLM generation is slow,
+// so this is generous — but without it a hung request leaves the UI spinning
+// forever (the Add-a-vehicle dialog disables Cancel while a lookup is in flight).
+const GEMINI_TIMEOUT_MS = 30_000;
+
 // Calls the server-side Gemini proxy (POST /api/gemini). The API key lives only on
 // the server, so it is never bundled into or exposed by the browser app.
-async function callGemini(contents: string): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+// An optional `signal` lets the caller cancel the request (e.g. the user closing
+// the dialog); it is merged with the internal timeout so either can abort.
+async function callGemini(contents: string, signal?: AbortSignal): Promise<{ ok: true; text: string } | { ok: false; error: string }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onAbort);
+  }
   try {
     const r = await fetch('/api/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ contents }),
+      signal: controller.signal,
     });
     const j = await r.json();
     if (!j?.ok) return { ok: false, error: friendlyError(j?.error ?? 'Gemini request failed.') };
     return { ok: true, text: j.text ?? '' };
   } catch (err: unknown) {
+    // Caller-initiated cancel: a benign message the caller ignores after unmount.
+    if (signal?.aborted) return { ok: false, error: 'Cancelled.' };
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      return { ok: false, error: `Lookup timed out after ${GEMINI_TIMEOUT_MS / 1000}s. The AI service may be busy or unreachable — please try again.` };
+    }
     return { ok: false, error: friendlyError(err instanceof Error ? err.message : String(err)) };
+  } finally {
+    clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -287,14 +311,27 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
 
     if (raw.pricing) {
       const pr = raw.pricing;
+      // Selling price is now derived (msrp − discount). The listing still reports an
+      // msrp and a selling price, so back out the discount from the two. If only a
+      // selling price is given (or it's above msrp), treat it as the msrp.
+      const msrp = Number(pr.msrp) || 0;
+      const selling = Number(pr.sellingPrice) || 0;
+      let msrpOut = msrp;
+      let discount = Number(pr.discounts) || 0;
+      if (selling > 0) {
+        if (msrp >= selling) discount = msrp - selling;
+        else { msrpOut = selling; discount = 0; }
+      }
+      const feeAmt = Number(pr.fees) || 0;
       data.pricing = {
-        msrp:         Number(pr.msrp)         || 0,
-        sellingPrice: Number(pr.sellingPrice)  || 0,
-        discounts:    Number(pr.discounts)     || 0,
-        incentives:   Number(pr.incentives)    || 0,
-        fees:         Number(pr.fees)          || 0,
-        tradeValue:   0,
-        taxRate:      0,
+        msrp:       msrpOut,
+        discount,
+        incentives: Number(pr.incentives) || 0,
+        tradeValue: 0,
+        taxRate:    0,
+        // A scraped lump "fees" is usually a doc/admin fee (taxable). The user can
+        // change the type, flip the flag, or split it on the Pricing tab.
+        fees:       feeAmt > 0 ? [{ ...makeFee('documentation'), amount: feeAmt }] : [],
       };
     }
 

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { financeCalc, ownershipCalc, avgRating, matrixScores } from '../lib/data';
+import { financeCalc, ownershipCalc, sellingPriceOf, avgRating, matrixScores } from '../lib/data';
 import { money, vehicleName } from '../lib/fmt';
 import Icon from '../components/Icon';
 import PowertrainBadge from '../components/PowertrainBadge';
@@ -45,7 +45,7 @@ export default function Dashboard() {
   const total = vehicles.length;
 
   const { prices, priceRangeMax, lowestPayment, topMatch, paymentLeaders, ownLeaders, matrixLeaders, recentLeaders } = useMemo(() => {
-    const prices = active.map(v => v.pricing.sellingPrice || v.pricing.msrp || 0).filter(Boolean);
+    const prices = active.map(v => sellingPriceOf(v.pricing)).filter(Boolean);
     const priceRangeMax = prices.length ? money(Math.max(...prices)) : '';
     const paymentsByVehicle = active.map(v => ({ v, mo: financeCalc(v).monthly })).sort((a, b) => a.mo - b.mo);
     const lowestPayment = paymentsByVehicle[0];
@@ -152,7 +152,7 @@ export default function Dashboard() {
               <div>
                 <div className="label">Price</div>
                 <div className="num" style={{ fontSize: 22, fontWeight: 500, marginTop: 4 }}>
-                  {money(topMatch.vehicle.pricing.sellingPrice || topMatch.vehicle.pricing.msrp)}
+                  {money(sellingPriceOf(topMatch.vehicle.pricing))}
                 </div>
               </div>
               <div>

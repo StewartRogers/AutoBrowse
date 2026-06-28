@@ -54,14 +54,162 @@ export interface Features {
   roofRack?: boolean;
 }
 
+export type SellerType = 'dealer' | 'private';
+
+export type FeeType =
+  | 'documentation' | 'finance' | 'freight_pdi' | 'registration_icbc'
+  | 'tire_levy' | 'ac_excise' | 'vsa_consumer_fee' | 'battery_levy'
+  | 'extended_warranty' | 'custom';
+
+export interface FeeCatalogEntry {
+  type: FeeType;
+  label: string;
+  taxableDefault: boolean;
+  verify: boolean;   // true → nudge the user to confirm against the bill of sale
+  note?: string;
+}
+
+// Common BC dealer-purchase fees and their default tax treatment. Editable data —
+// adjust as rules are confirmed. Sources: a fee that forms part of the purchase
+// price is taxable (PST Bulletin 116, GST+PST); financial services (a genuine
+// credit-arranging fee) are GST-exempt under the federal Excise Tax Act; government
+// registration fees carry no GST/PST. The CONFIDENT entries are settled defaults;
+// the rest are marked verify so the UI prompts the user to check the bill of sale.
+export const FEE_CATALOG: FeeCatalogEntry[] = [
+  { type: 'documentation',     label: 'Documentation',       taxableDefault: true,  verify: false },
+  { type: 'finance',           label: 'Finance fee',         taxableDefault: false, verify: false, note: 'Exempt only if it is a genuine financing fee; if it is dealer margin relabeled, it is taxable.' },
+  { type: 'freight_pdi',       label: 'Freight / PDI',       taxableDefault: true,  verify: false },
+  { type: 'registration_icbc', label: 'Registration (ICBC)', taxableDefault: false, verify: false },
+  { type: 'tire_levy',         label: 'Tire levy',           taxableDefault: true,  verify: true },
+  { type: 'ac_excise',         label: 'A/C excise tax',      taxableDefault: true,  verify: true },
+  { type: 'vsa_consumer_fee',  label: 'VSA consumer fee',    taxableDefault: true,  verify: true },
+  { type: 'battery_levy',      label: 'Battery levy',        taxableDefault: true,  verify: true },
+  { type: 'extended_warranty', label: 'Extended warranty',   taxableDefault: true,  verify: true },
+  { type: 'custom',            label: 'Custom fee',          taxableDefault: false, verify: true },
+];
+
+export function feeCatalogEntry(type: FeeType): FeeCatalogEntry {
+  return FEE_CATALOG.find(e => e.type === type) ?? FEE_CATALOG[FEE_CATALOG.length - 1];
+}
+
+// A single line-item fee. `type` is chosen from FEE_CATALOG, which fills `label`
+// and the default `taxable`. The user can still flip `taxable`; when they do we set
+// `taxableOverridden` so the default isn't silently re-applied on the next change.
+export interface Fee {
+  id: string;
+  type: FeeType;
+  label: string;
+  amount: number;
+  taxable: boolean;
+  taxableOverridden: boolean;
+}
+
+// Build a fresh fee row of the given type, pre-filled from the catalog.
+export function makeFee(type: FeeType = 'custom'): Fee {
+  const e = feeCatalogEntry(type);
+  return { id: uid(), type, label: e.label, amount: 0, taxable: e.taxableDefault, taxableOverridden: false };
+}
+
+// Best-effort mapping of a free-form legacy fee label onto a catalog type.
+export function inferFeeType(label: string): FeeType {
+  const l = label.toLowerCase();
+  if (l.includes('doc')) return 'documentation';
+  if (l.includes('financ')) return 'finance';
+  if (l.includes('freight') || l.includes('pdi')) return 'freight_pdi';
+  if (l.includes('regist') || l.includes('icbc')) return 'registration_icbc';
+  if (l.includes('tire') || l.includes('tyre')) return 'tire_levy';
+  if (l.includes('a/c') || l.includes('excise') || l.includes('air con')) return 'ac_excise';
+  if (l.includes('vsa')) return 'vsa_consumer_fee';
+  if (l.includes('battery')) return 'battery_levy';
+  if (l.includes('warranty')) return 'extended_warranty';
+  return 'custom';
+}
+
+// Normalize one stored/legacy fee into the structured shape. Accepts the old
+// { label, amount, taxable } objects (and already-migrated rows) and fills in
+// id/type/taxableOverridden without losing the entered amount or label.
+export function migrateFee(raw: unknown): Fee {
+  const ff = (raw ?? {}) as Record<string, unknown>;
+  const label = String(ff.label ?? 'Fee');
+  const amount = Number.isFinite(Number(ff.amount)) ? Number(ff.amount) : 0;
+  const taxable = !!ff.taxable;
+  const validType = FEE_CATALOG.some(c => c.type === ff.type);
+  const type = (validType ? ff.type : inferFeeType(label)) as FeeType;
+  const taxableOverridden = ff.taxableOverridden !== undefined
+    ? !!ff.taxableOverridden
+    : taxable !== feeCatalogEntry(type).taxableDefault;
+  const id = typeof ff.id === 'string' && ff.id ? ff.id : uid();
+  return { id, type, label, amount, taxable, taxableOverridden };
+}
+
 export interface Pricing {
   msrp: number;
-  sellingPrice: number;
-  discounts: number;
-  incentives: number;
+  discount: number;   // selling price is DERIVED, not entered: sellingPriceOf(p) = max(0, msrp − clamp(discount, 0, msrp)). msrp is display-only (shows the buyer their saving).
+  incentives: number; // post-tax rebate (reduces the out-the-door total, not the taxable base)
   tradeValue: number;
-  taxRate: number; // %
-  fees: number;
+  taxRate: number;    // % — legacy flat rate; still drives lease tax (leaseCalc). BC purchase tax is computed from the fields below.
+  fees: Fee[];        // itemized; each fee is taxed (or not) per its `taxable` flag
+  // BC vehicle-tax inputs (see bcTax / PST Bulletin 308). All optional with
+  // dealer/passenger/non-ZEV defaults so existing data and callers don't break.
+  sellerType?: SellerType;       // default 'dealer' (private sales pay no GST)
+  isZEV?: boolean;               // default false (zero-emission vehicle PST schedule)
+  isPassengerVehicle?: boolean;  // default true  (non-passenger = flat PST)
+}
+
+// Selling price is computed from MSRP minus the discount (never an input). Discount
+// is clamped to [0, msrp] so the price can never go negative or exceed MSRP.
+export function sellingPriceOf(p: Pricing): number {
+  const msrp = p.msrp || 0;
+  const discount = Math.min(Math.max(0, p.discount || 0), msrp);
+  return Math.max(0, msrp - discount);
+}
+
+// True when the entered discount is larger than MSRP — surface this as a validation
+// error in the UI. (The math itself clamps via sellingPriceOf, so it never breaks.)
+export function discountExceedsMsrp(p: Pricing): boolean {
+  return (p.discount || 0) > (p.msrp || 0);
+}
+
+// Upgrade a legacy pricing blob to the current shape: manual `sellingPrice` and
+// numeric `discounts` → derived `discount`; numeric `fees` → a single non-taxable
+// pass-through fee (legacy fees were added untaxed, so this preserves old totals).
+// Idempotent, so it's safe to run on already-migrated data (used at store load).
+export function migratePricing(raw: unknown): Pricing {
+  const r = (raw ?? {}) as Record<string, unknown>;
+  const num = (x: unknown) => (Number.isFinite(Number(x)) ? Number(x) : 0);
+
+  let fees: Fee[];
+  if (Array.isArray(r.fees)) {
+    fees = r.fees.map(migrateFee);
+  } else {
+    // Oldest shape: a single numeric `fees` total (added untaxed) → one custom row.
+    const amt = num(r.fees);
+    fees = amt > 0 ? [migrateFee({ label: 'Fees', amount: amt, taxable: false })] : [];
+  }
+
+  let msrp = num(r.msrp);
+  let discount: number;
+  if (r.discount !== undefined && r.discount !== null) {
+    discount = num(r.discount);
+  } else if (Number.isFinite(Number(r.sellingPrice)) && Number(r.sellingPrice) > 0) {
+    const selling = Number(r.sellingPrice);
+    if (msrp >= selling) discount = msrp - selling;
+    else { msrp = selling; discount = 0; } // legacy used-car row with blank MSRP
+  } else {
+    discount = num(r.discounts);
+  }
+
+  return {
+    msrp,
+    discount,
+    incentives: num(r.incentives),
+    tradeValue: num(r.tradeValue),
+    taxRate: num(r.taxRate),
+    fees,
+    sellerType: r.sellerType === 'private' ? 'private' : 'dealer',
+    isZEV: !!r.isZEV,
+    isPassengerVehicle: r.isPassengerVehicle === undefined ? true : !!r.isPassengerVehicle,
+  };
 }
 
 export interface Finance {
@@ -271,7 +419,7 @@ export function blankVehicle(): Vehicle {
     specs: {},
     ratings: {},
     testDrive: {}, testDriveNotes: {},
-    pricing: { msrp: 0, sellingPrice: 0, discounts: 0, incentives: 0, tradeValue: 0, taxRate: 13, fees: 1000 },
+    pricing: { msrp: 0, discount: 0, incentives: 0, tradeValue: 0, taxRate: 13, fees: [{ ...makeFee('documentation'), amount: 1000 }], sellerType: 'dealer', isZEV: false, isPassengerVehicle: true },
     finance: { downPayment: 3000, apr: 6.4, termMonths: 60 },
     lease: { termMonths: 36, residualPct: 58, downPayment: 2500, annualKm: 20000, moneyFactor: 0.0022 },
     ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1700, maintenanceYr: 700 },
@@ -280,33 +428,207 @@ export function blankVehicle(): Vehicle {
   };
 }
 
-// ---------- financial math ----------
+// ---------- British Columbia vehicle tax ----------
+//
+// Source: BC PST Bulletin 308, "PST on Vehicles" (gov.bc.ca). GST is the 5%
+// federal tax; PST is tiered by price, seller type, ZEV status, and whether the
+// vehicle is a passenger vehicle. Rates live in data-driven tables below so a
+// future rate change is a one-line edit.
+//
+// NOTE: rebates are NOT a tax and are handled separately (p.incentives, applied
+// in outTheDoor). As of mid-2026 BC offers no purchase rebate for passenger EVs,
+// so there is nothing to net out here.
+//
+// TODO(2027-02-22): the ZEV passenger PST schedule below expires on this date,
+// after which ZEVs revert to the standard (non-ZEV) passenger table. bcTax()
+// already switches automatically based on `asOf`; revisit/remove once expired.
 
-export function taxesOn(p: Pricing): number {
-  const taxable = Math.max(0, (p.sellingPrice || 0) - (p.tradeValue || 0));
-  return taxable * ((p.taxRate || 0) / 100);
+// Each tier's `rate` applies when base price >= `min` and below the next entry's
+// `min`. Lookup = the last entry whose `min` is <= base. Rates are decimals.
+interface PstTier { min: number; rate: number }
+
+const PST_DEALER_PASSENGER: PstTier[] = [
+  { min: 0, rate: 0.07 },
+  { min: 55_000, rate: 0.08 },
+  { min: 56_000, rate: 0.09 },
+  { min: 57_000, rate: 0.10 },
+  { min: 125_000, rate: 0.15 },
+  { min: 150_000, rate: 0.20 },
+];
+
+// In effect until 2027-02-22 (see TODO above), then reverts to the non-ZEV table.
+const PST_DEALER_PASSENGER_ZEV: PstTier[] = [
+  { min: 0, rate: 0.07 },
+  { min: 75_000, rate: 0.08 },
+  { min: 76_000, rate: 0.09 },
+  { min: 77_000, rate: 0.10 },
+  { min: 125_000, rate: 0.15 },
+  { min: 150_000, rate: 0.20 },
+];
+
+// Private passenger sales: ZEV and non-ZEV are identical.
+const PST_PRIVATE_PASSENGER: PstTier[] = [
+  { min: 0, rate: 0.12 },
+  { min: 125_000, rate: 0.15 },
+  { min: 150_000, rate: 0.20 },
+];
+
+// Non-passenger vehicles (trucks, etc.): flat regardless of price.
+const PST_DEALER_NONPASSENGER: PstTier[] = [{ min: 0, rate: 0.07 }];
+const PST_PRIVATE_NONPASSENGER: PstTier[] = [{ min: 0, rate: 0.12 }];
+
+const ZEV_PST_SUNSET = Date.parse('2027-02-22T00:00:00');
+
+function pstTiers(p: Pricing, asOf: Date): PstTier[] {
+  const sellerType = p.sellerType ?? 'dealer';
+  const isPassenger = p.isPassengerVehicle ?? true;
+  if (!isPassenger) return sellerType === 'private' ? PST_PRIVATE_NONPASSENGER : PST_DEALER_NONPASSENGER;
+  if (sellerType === 'private') return PST_PRIVATE_PASSENGER;
+  const zevActive = (p.isZEV ?? false) && asOf.getTime() < ZEV_PST_SUNSET;
+  return zevActive ? PST_DEALER_PASSENGER_ZEV : PST_DEALER_PASSENGER;
 }
 
-export function outTheDoor(p: Pricing): number {
-  return (p.sellingPrice || 0) + taxesOn(p) + (p.fees || 0) - (p.incentives || 0);
+function pstRate(tiers: PstTier[], base: number): number {
+  let rate = tiers[0].rate;
+  for (const t of tiers) if (base >= t.min) rate = t.rate;
+  return rate;
+}
+
+export interface FeeBreakdown {
+  label: string;
+  amount: number;     // face value (added to the total exactly once)
+  taxable: boolean;
+  taxApplied: number; // GST+PST attributable to this fee (0 for non-taxable fees)
+}
+
+export interface TaxBreakdown {
+  // Inputs surfaced for display
+  msrp: number;
+  discount: number;
+  sellingPrice: number;     // derived: msrp − discount
+  // Tax
+  gst: number;              // 5% federal, dealer purchases only
+  pst: number;              // tiered BC provincial tax
+  pstRate: number;          // the PST rate applied, as a percentage (e.g. 7, 10, 12) — for display
+  luxuryTax: number;        // federal luxury tax (sellingPrice > 100k)
+  totalTax: number;         // gst + pst + luxuryTax
+  fees: FeeBreakdown[];
+  outTheDoor: number;       // sellingPrice + totalTax + all fee amounts − incentives
+  totalPrice: number;       // back-compat: sellingPrice + totalTax (before fees/incentives/trade)
+}
+
+// ---------- financial math ----------
+
+// BC vehicle tax + out-the-door breakdown. `asOf` controls the ZEV-schedule sunset
+// and defaults to now; tests pass a fixed date for determinism.
+//
+// Sources: PST rates per BC PST Bulletin 308; fees forming part of the purchase
+// price per Bulletin 116; financial services (a genuine credit-arranging fee) are
+// GST-exempt under the federal Excise Tax Act. The finance-fee exemption depends on
+// how the dealer characterizes it — verify against the bill of sale.
+export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
+  const msrp = p.msrp || 0;
+  const discount = Math.min(Math.max(0, p.discount || 0), msrp);
+  const sellingPrice = Math.max(0, msrp - discount);
+  const sellerType = p.sellerType ?? 'dealer';
+  const fees = p.fees ?? [];
+
+  // Taxable fees (doc/admin) are added to the GST/PST base before tax (Bulletin 116).
+  const taxableFeeTotal = fees.reduce((s, f) => s + (f.taxable ? (f.amount || 0) : 0), 0);
+
+  // Dealer: a trade-in reduces both GST and PST. Private sale: PST on the full
+  // price, no GST, and a trade-in does not reduce the base.
+  const tradeReduction = sellerType === 'dealer' ? (p.tradeValue || 0) : 0;
+  const taxableBase = Math.max(0, sellingPrice - tradeReduction + taxableFeeTotal);
+
+  // Federal luxury tax: only above $100k, the LESSER of 10% of price or 20% of the
+  // amount over $100k. Computed on the selling price, before the fee adjustments.
+  const luxuryTax = sellingPrice > 100_000
+    ? Math.min(0.10 * sellingPrice, 0.20 * (sellingPrice - 100_000))
+    : 0;
+
+  // PST band is chosen from the taxableBase, so a taxable fee can push the price
+  // into a higher tier. GST and PST are parallel — neither is charged on the other
+  // — but GST is charged on top of the luxury tax (existing rule).
+  const rate = pstRate(pstTiers(p, asOf), taxableBase);
+  const pst = taxableBase * rate;
+  const gst = sellerType === 'dealer' ? 0.05 * (taxableBase + luxuryTax) : 0;
+  const totalTax = gst + pst + luxuryTax;
+
+  // Per-fee tax attribution for display: a taxable fee carries GST (dealer) + PST
+  // at the vehicle's rate; a non-taxable fee carries nothing.
+  const feeTaxRate = (sellerType === 'dealer' ? 0.05 : 0) + rate;
+  const feeBreakdown: FeeBreakdown[] = fees.map(f => ({
+    label: f.label,
+    amount: f.amount || 0,
+    taxable: !!f.taxable,
+    taxApplied: f.taxable ? (f.amount || 0) * feeTaxRate : 0,
+  }));
+
+  // Every fee's principal is added to the total exactly once here; the tax on the
+  // taxable ones is already inside totalTax (via taxableBase), not re-added.
+  const allFees = fees.reduce((s, f) => s + (f.amount || 0), 0);
+  const outTheDoor = sellingPrice + totalTax + allFees - (p.incentives || 0);
+
+  // Round the display rate to 2 decimals — `rate * 100` yields FP noise like
+  // 7.000000000000001 for 0.07. The tier rates are whole percents in practice.
+  const ratePct = Math.round(rate * 10000) / 100;
+  return {
+    msrp, discount, sellingPrice,
+    gst, pst, pstRate: ratePct, luxuryTax, totalTax,
+    fees: feeBreakdown, outTheDoor,
+    totalPrice: sellingPrice + totalTax,
+  };
+}
+
+// Single-number tax total, kept for backward compatibility (all callers).
+export function taxesOn(p: Pricing, asOf: Date = new Date()): number {
+  return bcTax(p, asOf).totalTax;
+}
+
+export function outTheDoor(p: Pricing, asOf: Date = new Date()): number {
+  return bcTax(p, asOf).outTheDoor;
 }
 
 export interface FinanceResult {
-  principal: number;
+  principal: number;        // = amountFinanced (kept name for backward compatibility)
+  amountFinanced: number;   // outTheDoor − downPayment − tradeValue, floored at 0
   monthly: number;
-  totalPaid: number;
   totalInterest: number;
+  totalOfPayments: number;  // monthly × term — the LOAN only (NO down payment)
+  totalCost: number;        // buyer's total out of pocket = downPayment + totalOfPayments
+  totalPaid: number;        // kept name for backward compatibility; equals totalCost
 }
 
 export function financeCalc(v: Pick<Vehicle, 'pricing' | 'finance'>): FinanceResult {
   const p = v.pricing, f = v.finance;
-  const principal = Math.max(0, outTheDoor(p) - (f.downPayment || 0) - (p.tradeValue || 0));
+  const otd = outTheDoor(p);
+  // Trade-in reduces the loan (existing behaviour); with no trade this is just
+  // outTheDoor − downPayment, per the spec.
+  const amountFinanced = Math.max(0, otd - (f.downPayment || 0) - (p.tradeValue || 0));
   const r = (f.apr || 0) / 100 / 12;
   const n = f.termMonths || 1;
-  const monthly = r === 0 ? principal / n : (principal * r) / (1 - Math.pow(1 + r, -n));
-  const totalPaid = monthly * n + (f.downPayment || 0);
-  const totalInterest = monthly * n - principal;
-  return { principal, monthly, totalPaid, totalInterest };
+  const monthly = r === 0 ? amountFinanced / n : (amountFinanced * r) / (1 - Math.pow(1 + r, -n));
+
+  // Total of payments is the sum of the monthly payments only — financed amount
+  // plus interest. The down payment is paid up front and is NOT part of it
+  // (folding it in here double-counts money already in the out-the-door price).
+  const totalOfPayments = monthly * n;
+  const totalInterest = totalOfPayments - amountFinanced;
+  // Total out of pocket = down payment + the loan's total of payments. Expressed via
+  // the OTD so an oversized down payment can't inflate it past the price; equals
+  // downPayment + totalOfPayments for normal inputs (and OTD − trade + interest).
+  const totalCost = Math.max(0, otd - (p.tradeValue || 0)) + totalInterest;
+
+  return {
+    principal: amountFinanced,
+    amountFinanced,
+    monthly,
+    totalInterest,
+    totalOfPayments,
+    totalCost,
+    totalPaid: totalCost,
+  };
 }
 
 export interface LeaseResult {
@@ -318,11 +640,12 @@ export interface LeaseResult {
 
 export function leaseCalc(v: Pick<Vehicle, 'pricing' | 'lease'>): LeaseResult {
   const p = v.pricing, l = v.lease;
+  const selling = sellingPriceOf(p);
   const cap = Math.max(
     0,
-    (p.sellingPrice || 0) - (l.downPayment || 0) - (p.tradeValue || 0) - (p.incentives || 0)
+    selling - (l.downPayment || 0) - (p.tradeValue || 0) - (p.incentives || 0)
   );
-  const residual = (p.msrp || p.sellingPrice || 0) * ((l.residualPct || 0) / 100);
+  const residual = (p.msrp || selling || 0) * ((l.residualPct || 0) / 100);
   const depreciation = (cap - residual) / (l.termMonths || 1);
   const financeCharge = (cap + residual) * (l.moneyFactor || 0);
   const base = depreciation + financeCharge;
@@ -377,7 +700,7 @@ export interface MetricDef {
 }
 
 export const MATRIX_METRICS: Record<string, MetricDef> = {
-  price:       { label: 'Price',          dir: 'low',  fn: v => v.pricing.sellingPrice || v.pricing.msrp || 0, fmt: 'money' },
+  price:       { label: 'Price',          dir: 'low',  fn: v => sellingPriceOf(v.pricing), fmt: 'money' },
   payment:     { label: 'Monthly Cost',   dir: 'low',  fn: v => financeCalc(v).monthly,    fmt: 'money' },
   ownership:   { label: '5-yr Ownership', dir: 'low',  fn: v => ownershipCalc(v).y5,       fmt: 'money' },
   comfort:     { label: 'Comfort',        dir: 'high', fn: v => v.ratings.comfort || 0,    fmt: 'score' },
@@ -472,7 +795,7 @@ export function SEED_VEHICLES(): Vehicle[] {
       ratings: { comfort: 8, driving: 7, interior: 8, technology: 8, appearance: 7, cargo: 7, value: 9 },
       testDrive: { rideQuality: 8, visibility: 8, seatComfort: 9, cabinNoise: 8, acceleration: 7, steeringFeel: 7 },
       testDriveNotes: { rideQuality: 'Composed over rough pavement', seatComfort: 'Best seats of the three I drove' },
-      pricing: { msrp: 38990, sellingPrice: 37800, discounts: 600, incentives: 500, tradeValue: 9000, taxRate: 13, fees: 1000 },
+      pricing: { msrp: 38990, discount: 1190, incentives: 500, tradeValue: 9000, taxRate: 13, fees: [{ ...makeFee('documentation'), amount: 1000 }] },
       finance: { downPayment: 4000, apr: 6.2, termMonths: 60 },
       lease: { termMonths: 36, residualPct: 57, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00210 },
       ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1650, maintenanceYr: 620 },
@@ -488,7 +811,7 @@ export function SEED_VEHICLES(): Vehicle[] {
       ratings: { comfort: 7, driving: 9, interior: 7, technology: 9, appearance: 8, cargo: 8, value: 7 },
       testDrive: { rideQuality: 6, visibility: 7, seatComfort: 7, cabinNoise: 9, acceleration: 10, steeringFeel: 8 },
       testDriveNotes: { acceleration: 'Effortless, instant', rideQuality: 'Firm over expansion joints' },
-      pricing: { msrp: 47490, sellingPrice: 47490, discounts: 0, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: 995 },
+      pricing: { msrp: 47490, discount: 0, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: [{ ...makeFee('documentation'), amount: 995 }] },
       finance: { downPayment: 4000, apr: 6.9, termMonths: 60 },
       lease: { termMonths: 36, residualPct: 56, downPayment: 3000, annualKm: 20000, moneyFactor: 0.00250 },
       ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1980, maintenanceYr: 380 },
@@ -504,7 +827,7 @@ export function SEED_VEHICLES(): Vehicle[] {
       ratings: { comfort: 7, driving: 6, interior: 6, technology: 7, appearance: 7, cargo: 9, value: 8 },
       testDrive: { rideQuality: 7, visibility: 9, seatComfort: 7, cabinNoise: 6, acceleration: 6, steeringFeel: 6 },
       testDriveNotes: { visibility: 'Commanding view, easy to park', cabinNoise: 'Engine drones on the highway' },
-      pricing: { msrp: 35450, sellingPrice: 34900, discounts: 550, incentives: 0, tradeValue: 9000, taxRate: 13, fees: 1000 },
+      pricing: { msrp: 35450, discount: 550, incentives: 0, tradeValue: 9000, taxRate: 13, fees: [{ ...makeFee('documentation'), amount: 1000 }] },
       finance: { downPayment: 3500, apr: 6.4, termMonths: 60 },
       lease: { termMonths: 36, residualPct: 60, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00230 },
       ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1580, maintenanceYr: 720 },
@@ -520,7 +843,7 @@ export function SEED_VEHICLES(): Vehicle[] {
       ratings: { comfort: 9, driving: 8, interior: 8, technology: 8, appearance: 8, cargo: 6, value: 8 },
       testDrive: { rideQuality: 9, visibility: 6, seatComfort: 9, cabinNoise: 10, acceleration: 8, steeringFeel: 7 },
       testDriveNotes: { cabinNoise: 'Library quiet at speed', seatComfort: 'Relaxation seats are excellent' },
-      pricing: { msrp: 45600, sellingPrice: 44200, discounts: 1400, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: 1000 },
+      pricing: { msrp: 45600, discount: 1400, incentives: 7500, tradeValue: 9000, taxRate: 13, fees: [{ ...makeFee('documentation'), amount: 1000 }] },
       finance: { downPayment: 4000, apr: 6.6, termMonths: 60 },
       lease: { termMonths: 36, residualPct: 54, downPayment: 2500, annualKm: 20000, moneyFactor: 0.00190 },
       ownership: { annualKm: 20000, fuelCostPerL: 1.65, electricityPerKwh: 0.13, insuranceYr: 1820, maintenanceYr: 420 },

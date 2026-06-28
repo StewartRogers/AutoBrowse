@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
-import { financeCalc, leaseCalc, ownershipCalc, outTheDoor, avgRating, type Vehicle, type Powertrain } from '../lib/data';
+import { financeCalc, leaseCalc, ownershipCalc, outTheDoor, sellingPriceOf, avgRating, type Vehicle, type Powertrain } from '../lib/data';
 import { money } from '../lib/fmt';
 import Icon from '../components/Icon';
 import PowertrainBadge from '../components/PowertrainBadge';
@@ -174,7 +174,7 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
                   <div>
                     <div className="label">MSRP</div>
                     <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
-                      {money(v.pricing.msrp || v.pricing.sellingPrice)}
+                      {money(v.pricing.msrp)}
                     </div>
                   </div>
                 </>
@@ -198,7 +198,7 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
                   <div>
                     <div className="label">Price</div>
                     <div className="num" style={{ fontSize: 15, fontWeight: 600, color: 'var(--accent)', marginTop: 2 }}>
-                      {money(v.pricing.sellingPrice || v.pricing.msrp)}
+                      {money(sellingPriceOf(v.pricing))}
                     </div>
                   </div>
                   <div>
@@ -219,7 +219,7 @@ function VehicleCard({ v, selected, onToggleCompare, onEdit, onExclude, onRestor
                 }
               </div>
               <div>
-                <div className="label">5-yr Cost</div>
+                <div className="label" title="Fuel/electricity + insurance + maintenance over 5 years. Excludes the purchase price.">5-yr Running Cost</div>
                 <div className="num" style={{ fontSize: 15, fontWeight: 500, marginTop: 2 }}>
                   {money(own.y5)}
                 </div>
@@ -282,7 +282,7 @@ export default function Garage({ onAddVehicle, onEditVehicle }: GarageProps) {
 
     return [...filtered].sort((a, b) => {
       switch (sort) {
-        case 'price': return (a.pricing.sellingPrice || a.pricing.msrp) - (b.pricing.sellingPrice || b.pricing.msrp);
+        case 'price': return sellingPriceOf(a.pricing) - sellingPriceOf(b.pricing);
         case 'payment': return financeCalc(a).monthly - financeCalc(b).monthly;
         case 'rating': return avgRating(b) - avgRating(a);
         case 'economy': {

@@ -146,6 +146,17 @@ input, textarea, select { font-family: var(--sans); font-size: inherit; }
 
 textarea.input { resize: vertical; }
 
+/* Hide the native up/down spinners on number fields — values are typed, not stepped. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 .select {
   appearance: none;
   padding-right: 28px;

@@ -13,6 +13,14 @@ import { installAuthRoutes, requireAuth } from './auth.js';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Lightweight tagged logging for the AI/scrape endpoints. These calls reach out to
+// slow third parties (Gemini, Wikipedia), so logging each phase with elapsed time
+// makes a hang or slow path obvious instead of invisible. `t0` is from Date.now().
+function logTag(tag, msg) {
+  console.log(`[${new Date().toISOString()}] [${tag}] ${msg}`);
+}
+const since = (t0) => `${Date.now() - t0}ms`;
+
 // Body parsing that works both as a standalone server and as a Vercel function.
 // Vercel's Node runtime may have already parsed the JSON body (consuming the
 // stream), in which case express.json() would overwrite it with {}. So if a parsed
@@ -133,26 +141,47 @@ app.put('/api/matrix', async (req, res) => {
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
 const GEMINI_MODEL = process.env.GEMINI_MODEL || process.env.VITE_GEMINI_MODEL || 'gemini-3.1-flash-lite';
 
+// Give up on a hung Gemini call so the request doesn't hang forever. Kept just
+// under the client's 30s abort (geminiScrape.ts) so the server can return a clean
+// 504 JSON error before the browser aborts on its own.
+const GEMINI_TIMEOUT_MS = 28_000;
+
 // POST /api/gemini — body { contents: string } → { ok, text }
 app.post('/api/gemini', async (req, res) => {
+  const t0 = Date.now();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
   try {
     const contents = req.body?.contents;
     if (typeof contents !== 'string' || !contents.trim()) {
+      logTag('gemini', 'rejected: missing prompt contents');
       return res.status(400).json({ ok: false, error: 'Missing prompt contents.' });
     }
     if (!GEMINI_API_KEY) {
+      logTag('gemini', 'rejected: GEMINI_API_KEY not configured on server');
       return res.status(500).json({ ok: false, error: 'Server is missing GEMINI_API_KEY. Set it in the environment (no VITE_ prefix).' });
     }
+    logTag('gemini', `→ model=${GEMINI_MODEL} promptChars=${contents.length}`);
     const ai = new GoogleGenAI({ apiKey: GEMINI_API_KEY });
     const response = await ai.models.generateContent({
       model: GEMINI_MODEL,
       contents,
-      config: { temperature: 0 },
+      config: { temperature: 0, abortSignal: controller.signal },
     });
-    return res.json({ ok: true, text: response.text ?? '' });
+    const text = response.text ?? '';
+    logTag('gemini', `✓ ok in ${since(t0)} responseChars=${text.length}`);
+    return res.json({ ok: true, text });
   } catch (err) {
+    if (controller.signal.aborted) {
+      logTag('gemini', `✗ timed out after ${since(t0)} (limit ${GEMINI_TIMEOUT_MS / 1000}s)`);
+      return res.status(504).json({ ok: false, error: `Gemini request timed out after ${GEMINI_TIMEOUT_MS / 1000}s.` });
+    }
     // Pass Gemini's error message through; the client formats it for display.
-    return res.status(502).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    const msg = err instanceof Error ? err.message : String(err);
+    logTag('gemini', `✗ error in ${since(t0)}: ${msg.slice(0, 200)}`);
+    return res.status(502).json({ ok: false, error: msg });
+  } finally {
+    clearTimeout(timer);
   }
 });
 
@@ -237,7 +266,9 @@ app.get('/api/scrape-html', async (req, res) => {
       const colorMatch = description.match(/color[:\s-]+([^.|]+)/i);
       if (colorMatch) data.color = colorMatch[1].trim();
       const price = parsePrice(description);
-      if (price) data.pricing = { msrp: price, sellingPrice: price, discounts: 0, incentives: 0, fees: 0, tradeValue: 0, taxRate: 0 };
+      // Selling price is derived (msrp − discount); the scraped price is the msrp.
+      // Fees are an itemized array now (none scraped here).
+      if (price) data.pricing = { msrp: price, discount: 0, incentives: 0, fees: [], tradeValue: 0, taxRate: 0 };
     }
     if (image) data.photoUrl = image;
 
@@ -250,11 +281,13 @@ app.get('/api/scrape-html', async (req, res) => {
 // ─── Wikipedia photo fallback ───────────────────────────────────────────────
 
 app.get('/api/wiki-photo', async (req, res) => {
+  const t0 = Date.now();
   try {
     const year  = String(req.query.year  || '').trim();
     const make  = String(req.query.make  || '').trim();
     const model = String(req.query.model || '').trim();
     if (!make || !model) {
+      logTag('wiki-photo', 'rejected: missing make or model');
       return res.status(400).json({ ok: false, error: 'Missing make or model.' });
     }
 
@@ -265,17 +298,48 @@ app.get('/api/wiki-photo', async (req, res) => {
       `${make} ${model} (automobile)`,
     ].filter(Boolean).map(t => t.replace(/ /g, '_'));
 
-    for (const title of candidates) {
+    // Query all candidates in PARALLEL so total time is bounded by the slowest
+    // single call (~6s), not the sum. Sequential 10s-each could stall up to 30s
+    // when a title hangs — the freeze that made this look broken locally. Each
+    // call is isolated; we then prefer the highest-priority title that hit.
+    logTag('wiki-photo', `→ trying ${candidates.length} candidate(s) in parallel for ${make} ${model}`);
+    const lookups = candidates.map(async (title) => {
+      const tc = Date.now();
       const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`;
-      const resp = await fetch(url, { headers: { 'User-Agent': 'AutoBrowse/1.0 (car research app)' }, signal: AbortSignal.timeout(10000) });
-      if (!resp.ok) continue;
-      const json = await resp.json();
-      const thumb = json?.thumbnail?.source || json?.originalimage?.source;
-      if (thumb) return res.json({ ok: true, photoUrl: thumb });
+      try {
+        const resp = await fetch(url, { headers: { 'User-Agent': 'AutoBrowse/1.0 (car research app)' }, signal: AbortSignal.timeout(6000) });
+        if (!resp.ok) {
+          logTag('wiki-photo', `  · "${title}" → HTTP ${resp.status} in ${since(tc)}`);
+          return null;
+        }
+        const json = await resp.json();
+        // Use the thumbnail URL EXACTLY as the summary API advertises it. It is a
+        // known-good, already-rendered size that always loads. (A previous attempt
+        // to bump the width to 1024px returned HTTP 400 for many files — Wikimedia
+        // only reliably serves the size it gives you here — so the photo was
+        // "found" but the <img> failed. With object-fit: contain it's sharp enough;
+        // fall back to the full-resolution original if there is no thumbnail.)
+        const photo = json?.thumbnail?.source || json?.originalimage?.source || null;
+        logTag('wiki-photo', `  · "${title}" → ${photo ? 'photo' : 'no image'} in ${since(tc)}`);
+        return photo;
+      } catch (e) {
+        const m = e instanceof Error ? e.name : String(e);
+        logTag('wiki-photo', `  · "${title}" → ${m} after ${since(tc)}`);
+        return null;
+      }
+    });
+
+    const results = await Promise.all(lookups);
+    const photoUrl = results.find(Boolean) || null; // candidates are in priority order
+    if (photoUrl) {
+      logTag('wiki-photo', `✓ photo found (total ${since(t0)})`);
+      return res.json({ ok: true, photoUrl });
     }
 
+    logTag('wiki-photo', `✗ no photo found (total ${since(t0)})`);
     return res.json({ ok: false, error: 'No Wikipedia photo found.' });
   } catch (err) {
+    logTag('wiki-photo', `✗ error in ${since(t0)}: ${err instanceof Error ? err.message : String(err)}`);
     return res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
   }
 });

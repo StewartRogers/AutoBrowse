@@ -16,12 +16,18 @@
   padding-bottom: 12px;
   overflow: hidden;
 }
+/* When a real photo is shown we use object-fit: contain so the whole vehicle is
+   visible (never cropped). Drop the diagonal stripes so the letterbox areas on the
+   sides read as a clean neutral background rather than the empty-slot pattern. */
+.hasPhoto {
+  background-image: none;
+}
 .photo {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center;
 }
 .colorLabel {

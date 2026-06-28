@@ -57,7 +57,7 @@ GEMINI_MODEL=gemini-3.1-flash-lite   # optional override
 
 **Layout:** `AppShell` (`src/layouts/AppShell.tsx`) wraps all pages with the nav sidebar.
 
-**REST API endpoints (server.js):** `GET/POST /api/vehicles`, `PUT/DELETE /api/vehicles/:id`, `GET/PUT /api/matrix`, `GET /api/scrape-html?url=`, `GET /api/wiki-photo?year=&make=&model=`. Vehicles and matrix are stored as JSON blobs in libSQL/SQLite — the schema has no column-per-field.
+**REST API endpoints (server.js):** `GET/POST /api/vehicles`, `PUT/DELETE /api/vehicles/:id`, `GET/PUT /api/matrix`, `POST /api/gemini` (Gemini proxy — the browser never holds the key), `GET /api/scrape-html?url=`, `GET /api/wiki-photo?year=&make=&model=`. Auth endpoints (registered in `auth.js`): `GET /api/auth`, `POST /api/login`, `POST /api/logout`. Vehicles and matrix are stored as JSON blobs in libSQL/SQLite — the schema has no column-per-field.
 
 **Auth (`auth.js`):** Single-superuser gate over the whole API. `installAuthRoutes(app)` registers the public endpoints — `GET /api/auth` (status), `POST /api/login`, `POST /api/logout` — and must be mounted *before* `app.use('/api', requireAuth)` so the data routes are gated but login is reachable. The API, not the UI, is the security boundary (the SPA shell is static and anyone can call `/api/*`). Sessions are **stateless**: an HMAC-signed, expiring token in an HttpOnly+SameSite=Lax cookie (`ab_session`), so it works across ephemeral serverless instances with no session store. The gate is **enabled only when a password is configured** — with no `AUTH_PASSWORD`/`AUTH_PASSWORD_HASH` set, `requireAuth` is a no-op, so local dev stays open and offline. Prefer `AUTH_PASSWORD_HASH` (scrypt `salt:hash` from `node scripts/hash-password.mjs '...'`) over plaintext `AUTH_PASSWORD`. Frontend gate is `src/features/AuthGate.tsx` (wraps `<App/>` in `main.tsx`) + `src/features/Login.tsx`; sign-out lives in `AppShell` and reloads to re-gate.
 
@@ -73,7 +73,7 @@ GEMINI_MODEL=gemini-3.1-flash-lite   # optional override
 
 ## Key invariants
 
-- `taxesOn()` taxes `(sellingPrice − tradeValue)`, not the full price. Trade-in reduces the taxable base.
+- `taxesOn()` returns BC vehicle tax (`bcTax().totalTax` = GST + tiered PST + federal luxury tax) per PST Bulletin 308; it no longer uses the flat `pricing.taxRate`. Dealer base = `sellingPrice − tradeValue`; private sale = full `sellingPrice` with no GST. Use `bcTax()` for the `{ gst, pst, luxuryTax, totalTax, totalPrice }` breakdown. The legacy `taxRate` field now only drives `leaseCalc` lease-payment tax. ZEV PST schedule sunsets 2027-02-22 (`bcTax(p, asOf)`).
 - `financeCalc()` principal = `outTheDoor − downPayment − tradeValue` (trade reduces loan, not OTD).
 - `leaseCalc()` monthly is clamped to `≥ 0` (extreme trade/incentives can make cap < residual).
 - `matrixScores()` only scores non-archived vehicles; `archived: true` = excluded from matrix.

@@ -5,7 +5,7 @@
 import { create } from 'zustand';
 import {
   type Vehicle, type MatrixFactor,
-  blankVehicle, deepMerge, uid,
+  blankVehicle, deepMerge, uid, migratePricing,
   DEFAULT_MATRIX,
 } from '../lib/data';
 
@@ -15,7 +15,10 @@ const api = {
   async getVehicles(): Promise<Vehicle[]> {
     const r = await fetch('/api/vehicles');
     const j = await r.json();
-    return j.ok ? j.vehicles : [];
+    if (!j.ok) return [];
+    // Upgrade any legacy pricing blobs (manual sellingPrice, numeric fees) to the
+    // current shape on load, so the rest of the app can trust the Pricing type.
+    return (j.vehicles as Vehicle[]).map(v => ({ ...v, pricing: migratePricing(v.pricing) }));
   },
   saveVehicle(v: Vehicle) {
     fetch(`/api/vehicles/${v.id}`, {

@@ -61,13 +61,14 @@ describe('scrapeVehicleFromUrl', () => {
     }
   });
 
-  it('parses pricing fields and coerces strings to numbers', async () => {
-    geminiReturns({ pricing: { msrp: '45000', sellingPrice: '43000', discounts: 0, incentives: 0, fees: 0 } });
+  it('parses pricing fields and derives discount from msrp − sellingPrice', async () => {
+    geminiReturns({ pricing: { msrp: '45000', sellingPrice: '43000', discounts: 0, incentives: 0, fees: 600 } });
     const result = await scrapeVehicleFromUrl('https://example.com');
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.pricing?.msrp).toBe(45000);
-      expect(result.data.pricing?.sellingPrice).toBe(43000);
+      expect(result.data.pricing?.discount).toBe(2000); // 45000 − 43000 (selling price is derived)
+      expect(result.data.pricing?.fees?.[0]).toMatchObject({ type: 'documentation', amount: 600, taxable: true, taxableOverridden: false });
     }
   });
 

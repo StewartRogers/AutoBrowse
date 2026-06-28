@@ -3,8 +3,10 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import {
   SPEC_FIELDS, FEATURE_FIELDS, RATING_CATS, TESTDRIVE_CATS,
-  financeCalc, leaseCalc, ownershipCalc, outTheDoor, avgRating,
-  type Vehicle,
+  financeCalc, leaseCalc, ownershipCalc, outTheDoor, bcTax,
+  sellingPriceOf, discountExceedsMsrp, avgRating,
+  FEE_CATALOG, feeCatalogEntry, makeFee,
+  type Vehicle, type Fee, type FeeType,
 } from '../lib/data';
 import { money, vehicleName } from '../lib/fmt';
 import Icon from '../components/Icon';
@@ -13,6 +15,7 @@ import PhotoSlot from '../components/PhotoSlot';
 import ScoreBar from '../components/ScoreBar';
 import RatingDots from '../components/RatingDots';
 import Field from '../components/Field';
+import MoneyInput from '../components/MoneyInput';
 import Segmented from '../components/Segmented';
 import SectionLabel from '../components/SectionLabel';
 import ExcludeModal from '../features/ExcludeModal';
@@ -143,8 +146,8 @@ function SpecsTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
                 <div key={f.key} className={styles.specRow}>
                   <div className={styles.specLabel}>{f.label}{f.unit && <span className={styles.specUnit}> ({f.unit})</span>}</div>
                   {f.kind === 'text'
-                    ? <input className="input" style={{ maxWidth: 240 }} value={(v.specs as Record<string, string | number | undefined>)[f.key] as string ?? ''} onChange={e => update({ specs: { ...v.specs, [f.key]: e.target.value } })} />
-                    : <input className="input num" type="number" style={{ maxWidth: 120 }} value={(v.specs as Record<string, string | number | undefined>)[f.key] as number ?? ''} onChange={e => update({ specs: { ...v.specs, [f.key]: e.target.value === '' ? undefined : Number(e.target.value) } })} />
+                    ? <input className="input" value={(v.specs as Record<string, string | number | undefined>)[f.key] as string ?? ''} onChange={e => update({ specs: { ...v.specs, [f.key]: e.target.value } })} />
+                    : <input className="input num" type="number" value={(v.specs as Record<string, string | number | undefined>)[f.key] as number ?? ''} onChange={e => update({ specs: { ...v.specs, [f.key]: e.target.value === '' ? undefined : Number(e.target.value) } })} />
                   }
                 </div>
               ))}
@@ -168,7 +171,6 @@ function SpecsTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
                     {f.type === 'boolean' ? (
                       <select
                         className="input select"
-                        style={{ maxWidth: 120 }}
                         value={val === undefined ? '' : val ? 'yes' : 'no'}
                         onChange={e => setFeature(f.key, e.target.value === '' ? undefined : e.target.value === 'yes')}
                       >
@@ -179,7 +181,6 @@ function SpecsTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
                     ) : (
                       <select
                         className="input select"
-                        style={{ maxWidth: 200 }}
                         value={(val as string) ?? ''}
                         onChange={e => setFeature(f.key, e.target.value === '' ? null : e.target.value)}
                       >
@@ -262,23 +263,100 @@ function TestDriveTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>)
 // ── Pricing tab ───────────────────────────────────────────────────────────────
 function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => void }) {
   const p = v.pricing;
-  const taxes = Math.max(0, (p.sellingPrice || 0) - (p.tradeValue || 0)) * ((p.taxRate || 0) / 100);
-  const otd = (p.sellingPrice || 0) + taxes + (p.fees || 0) - (p.incentives || 0);
+  const tax = bcTax(p);
+  const otd = tax.outTheDoor;
+  const selling = sellingPriceOf(p);
+  const overDiscount = discountExceedsMsrp(p);
 
   const setP = (patch: Partial<Vehicle['pricing']>) => update({ pricing: { ...p, ...patch } });
+  const setFee = (id: string, patch: Partial<Fee>) =>
+    setP({ fees: p.fees.map(f => (f.id === id ? { ...f, ...patch } : f)) });
+  // Picking a type re-applies the catalog label + default tax treatment (clears any override).
+  const onFeeType = (id: string, type: FeeType) => {
+    const e = feeCatalogEntry(type);
+    setFee(id, { type, label: e.label, taxable: e.taxableDefault, taxableOverridden: false });
+  };
+  const addFee = () => setP({ fees: [...p.fees, makeFee('documentation')] });
+  const removeFee = (id: string) => setP({ fees: p.fees.filter(f => f.id !== id) });
 
   return (
     <div className={styles.pricingLayout}>
       <div>
         <SectionLabel>Negotiation</SectionLabel>
         <div className={styles.fieldStack}>
-          <Field label="MSRP"><input className="input num" type="number" value={p.msrp || ''} onChange={e => setP({ msrp: Number(e.target.value) })} /></Field>
-          <Field label="Selling Price"><input className="input num" type="number" value={p.sellingPrice || ''} onChange={e => setP({ sellingPrice: Number(e.target.value) })} /></Field>
-          <Field label="Discounts"><input className="input num" type="number" value={p.discounts || ''} onChange={e => setP({ discounts: Number(e.target.value) })} /></Field>
-          <Field label="Incentives / Rebates"><input className="input num" type="number" value={p.incentives || ''} onChange={e => setP({ incentives: Number(e.target.value) })} /></Field>
-          <Field label="Trade-in Value"><input className="input num" type="number" value={p.tradeValue || ''} onChange={e => setP({ tradeValue: Number(e.target.value) })} /></Field>
-          <Field label="Tax Rate (%)"><input className="input num" type="number" step="0.01" value={p.taxRate} onChange={e => setP({ taxRate: Number(e.target.value) })} /></Field>
-          <Field label="Fees"><input className="input num" type="number" value={p.fees || ''} onChange={e => setP({ fees: Number(e.target.value) })} /></Field>
+          <Field label="MSRP"><MoneyInput value={p.msrp} onChange={msrp => setP({ msrp })} /></Field>
+          <Field label="Discount" hint={overDiscount ? undefined : 'Selling price = MSRP − discount'}>
+            <MoneyInput value={p.discount} onChange={discount => setP({ discount })} />
+            {overDiscount && (
+              <span style={{ fontSize: 11, color: 'var(--red, #c0392b)' }}>
+                Discount can’t exceed MSRP ({money(p.msrp)}) — capped.
+              </span>
+            )}
+          </Field>
+          <Field label="Selling Price" hint="Derived from MSRP − discount">
+            <div className="input num" style={{ background: 'var(--paper-2)', display: 'flex', alignItems: 'center' }}>{money(selling)}</div>
+          </Field>
+          <Field label="Incentives / Rebates"><MoneyInput value={p.incentives} onChange={incentives => setP({ incentives })} /></Field>
+          <Field label="Trade-in Value"><MoneyInput value={p.tradeValue} onChange={tradeValue => setP({ tradeValue })} /></Field>
+        </div>
+
+        <SectionLabel>Fees</SectionLabel>
+        <div className={styles.fieldStack}>
+          {p.fees.map(f => {
+            const cat = feeCatalogEntry(f.type);
+            return (
+              <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto auto', gap: 6, alignItems: 'center' }}>
+                  <select className="input select" value={f.type} onChange={e => onFeeType(f.id, e.target.value as FeeType)}>
+                    {FEE_CATALOG.map(c => <option key={c.type} value={c.type}>{c.label}</option>)}
+                  </select>
+                  <MoneyInput value={f.amount} onChange={amount => setFee(f.id, { amount: Math.max(0, amount) })} />
+                  <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }}
+                    title="Taxable fees are added to the GST/PST base before tax; non-taxable fees pass through after tax"
+                    onClick={() => setFee(f.id, { taxable: !f.taxable, taxableOverridden: true })}>
+                    {f.taxable ? 'Taxable' : 'No tax'}
+                  </button>
+                  <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => removeFee(f.id)}>✕</button>
+                </div>
+                {f.type === 'custom' && (
+                  <input className="input" style={{ fontSize: 12 }} value={f.label} placeholder="Fee name" onChange={e => setFee(f.id, { label: e.target.value })} />
+                )}
+                {(cat.verify || f.taxableOverridden || cat.note) && (
+                  <span style={{ fontSize: 11, color: f.taxableOverridden ? 'var(--ink-soft)' : 'var(--ink-faint)' }}>
+                    {f.taxableOverridden && 'Tax manually set. '}
+                    {cat.verify && 'Verify against your bill of sale. '}
+                    {cat.note}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+          <button type="button" className="btn btn-secondary" style={{ fontSize: 12 }} onClick={addFee}>+ Add fee</button>
+        </div>
+
+        <SectionLabel>BC Tax</SectionLabel>
+        <div className={styles.fieldStack}>
+          <Field label="Seller">
+            <Segmented
+              options={[{ value: 'dealer', label: 'Dealer' }, { value: 'private', label: 'Private' }]}
+              value={p.sellerType ?? 'dealer'}
+              onChange={sellerType => setP({ sellerType })}
+            />
+          </Field>
+          <Field label="Vehicle Type">
+            <Segmented
+              options={[{ value: 'passenger', label: 'Passenger' }, { value: 'other', label: 'Other' }]}
+              value={(p.isPassengerVehicle ?? true) ? 'passenger' : 'other'}
+              onChange={t => setP({ isPassengerVehicle: t === 'passenger' })}
+            />
+          </Field>
+          <Field label="Zero-emission (ZEV)" hint="ZEV PST schedule applies until 2027-02-22">
+            <Segmented
+              options={[{ value: 'no', label: 'No' }, { value: 'yes', label: 'Yes' }]}
+              value={(p.isZEV ?? false) ? 'yes' : 'no'}
+              onChange={z => setP({ isZEV: z === 'yes' })}
+            />
+          </Field>
         </div>
       </div>
 
@@ -286,10 +364,15 @@ function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) =
       <div className={`card ${styles.otdCard}`}>
         <SectionLabel>Out-the-door</SectionLabel>
         <div className={styles.otdRows}>
-          <div className={styles.otdRow}><span>Selling Price</span><span className="num">{money(p.sellingPrice || 0)}</span></div>
-          {p.discounts > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Discounts</span><span className="num">−{money(p.discounts)}</span></div>}
-          <div className={styles.otdRow}><span>Taxes ({p.taxRate}%)</span><span className="num">{money(taxes)}</span></div>
-          <div className={styles.otdRow}><span>Fees</span><span className="num">{money(p.fees || 0)}</span></div>
+          <div className={styles.otdRow}><span>MSRP</span><span className="num">{money(p.msrp)}</span></div>
+          {tax.discount > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Discount</span><span className="num">−{money(tax.discount)}</span></div>}
+          <div className={styles.otdRow}><span>Selling price</span><span className="num">{money(tax.sellingPrice)}</span></div>
+          {(p.sellerType ?? 'dealer') === 'dealer' && <div className={styles.otdRow}><span>GST (5%)</span><span className="num">{money(tax.gst)}</span></div>}
+          <div className={styles.otdRow}><span>PST ({tax.pstRate}%)</span><span className="num">{money(tax.pst)}</span></div>
+          {tax.luxuryTax > 0 && <div className={styles.otdRow}><span>Luxury tax</span><span className="num">{money(tax.luxuryTax)}</span></div>}
+          {tax.fees.map((f, i) => (
+            <div key={i} className={styles.otdRow}><span>{f.label}{f.taxable ? '' : ' (no tax)'}</span><span className="num">{money(f.amount)}</span></div>
+          ))}
           {p.incentives > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Incentives</span><span className="num">−{money(p.incentives)}</span></div>}
           {p.tradeValue > 0 && <div className={`${styles.otdRow} ${styles.note}`}><span>Trade-in (applied to loan)</span><span className="num">−{money(p.tradeValue)}</span></div>}
         </div>
@@ -305,28 +388,43 @@ function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) =
 // ── Finance tab ───────────────────────────────────────────────────────────────
 function FinanceTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => void }) {
   const f = v.finance;
+  const p = v.pricing;
   const result = financeCalc(v);
+  const otd = outTheDoor(p);
   const setF = (patch: Partial<Vehicle['finance']>) => update({ finance: { ...f, ...patch } });
-  const TERMS = [{ value: '24', label: '24 mo' }, { value: '36', label: '36 mo' }, { value: '48', label: '48 mo' }, { value: '60', label: '60 mo' }, { value: '72', label: '72 mo' }, { value: '84', label: '84 mo' }];
+  const TERMS = [{ value: '24', label: '24 mo' }, { value: '36', label: '36 mo' }, { value: '48', label: '48 mo' }, { value: '60', label: '60 mo' }, { value: '72', label: '72 mo' }, { value: '84', label: '84 mo' }, { value: '96', label: '96 mo' }];
 
   return (
     <div className={styles.financeLayout}>
       <div>
         <div className={styles.fieldStack}>
-          <Field label="Down Payment"><input className="input num" type="number" value={f.downPayment || ''} onChange={e => setF({ downPayment: Number(e.target.value) })} /></Field>
+          <Field label="Down Payment"><MoneyInput value={f.downPayment} onChange={downPayment => setF({ downPayment })} /></Field>
           <Field label="APR (%)"><input className="input num" type="number" step="0.01" value={f.apr} onChange={e => setF({ apr: Number(e.target.value) })} /></Field>
           <Field label="Loan Term">
             <Segmented options={TERMS} value={String(f.termMonths)} onChange={val => setF({ termMonths: Number(val) })} />
           </Field>
         </div>
       </div>
+      {/* Top-down breakdown: out-the-door price → what's financed → monthly payment.
+          Pricing carries over here via outTheDoor(v.pricing). */}
       <div className={`card ${styles.resultSideCard}`}>
-        <SectionLabel>Results</SectionLabel>
-        <div className={styles.resultSideRows}>
-          <ResultStat label="Monthly Payment" value={money(result.monthly)} accent />
-          <ResultStat label="Amount Financed" value={money(result.principal)} />
-          <ResultStat label="Total Interest" value={money(result.totalInterest)} />
-          <ResultStat label="Total Cost" value={money(result.totalPaid)} />
+        <SectionLabel>Payment breakdown</SectionLabel>
+        <div className={styles.otdRows}>
+          <div className={styles.otdRow}><span>Out-the-door price</span><span className="num">{money(otd)}</span></div>
+          {f.downPayment > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Down payment</span><span className="num">−{money(f.downPayment)}</span></div>}
+          {p.tradeValue > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Trade-in</span><span className="num">−{money(p.tradeValue)}</span></div>}
+          <div className={styles.otdRow}><span>Amount financed</span><span className="num">{money(result.principal)}</span></div>
+          <div className={styles.otdRow}><span>APR</span><span className="num">{f.apr}%</span></div>
+          <div className={styles.otdRow}><span>Term</span><span className="num">{f.termMonths} mo</span></div>
+        </div>
+        <div className={styles.otdTotal}>
+          <span>Monthly payment</span>
+          <span className="num" style={{ color: 'var(--accent)', fontSize: 20, fontWeight: 600 }}>{money(result.monthly)}</span>
+        </div>
+        <div className={styles.otdRows} style={{ marginTop: 8 }}>
+          <div className={`${styles.otdRow} ${styles.note}`} style={{ borderBottom: 'none' }}><span>Total interest</span><span className="num">{money(result.totalInterest)}</span></div>
+          <div className={`${styles.otdRow} ${styles.note}`} style={{ borderBottom: 'none' }}><span>Total of payments (loan)</span><span className="num">{money(result.totalOfPayments)}</span></div>
+          <div className={`${styles.otdRow} ${styles.note}`} style={{ borderBottom: 'none' }}><span>Total cost (out of pocket)</span><span className="num">{money(result.totalCost)}</span></div>
         </div>
       </div>
     </div>
@@ -344,7 +442,7 @@ function LeaseTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) => 
     <div className={styles.financeLayout}>
       <div>
         <div className={styles.fieldStack}>
-          <Field label="Drive-off / Down"><input className="input num" type="number" value={l.downPayment || ''} onChange={e => setL({ downPayment: Number(e.target.value) })} /></Field>
+          <Field label="Drive-off / Down"><MoneyInput value={l.downPayment} onChange={downPayment => setL({ downPayment })} /></Field>
           <Field label="Lease Term">
             <Segmented options={TERMS} value={String(l.termMonths)} onChange={val => setL({ termMonths: Number(val) })} />
           </Field>
