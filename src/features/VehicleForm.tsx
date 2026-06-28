@@ -81,7 +81,6 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
   // Hooks must all be called unconditionally before any early return
   const navigate = useNavigate();
   const storeAdd = useStore(s => s.addVehicle);
-  const updateVehicle = useStore(s => s.updateVehicle);
   const mountedRef = useRef(true);
   // In-flight add-mode lookup, so Cancel / closing the dialog can abort it.
   const createAbortRef = useRef<AbortController | null>(null);
@@ -120,8 +119,13 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
     const canCreate = v.make.trim().length > 0 && v.model.trim().length > 0;
 
     function addAndOpen(patch: Partial<Vehicle> = {}) {
-      const id = storeAdd({ make: v.make.trim(), model: v.model.trim(), year: v.year, trim: v.trim.trim() });
-      if (Object.keys(patch).length) updateVehicle(id, patch);
+      const id = storeAdd({
+        make: v.make.trim(),
+        model: v.model.trim(),
+        year: v.year,
+        trim: v.trim.trim(),
+        ...patch,
+      });
       onClose();
       navigate(`/vehicle/${id}`);
     }

@@ -51,7 +51,7 @@ npm run lint       # eslint
 
 Two-process dev setup: Vite (frontend) proxies `/api/*` requests to an Express server on port 3000. The Express server (`server.js`) persists data through `@libsql/client` — a local SQLite file by default, or a hosted Turso database in production. State is managed client-side with Zustand; all mutations are optimistic with API persistence fire-and-forget.
 
-For deployment, the same Express `app` is re-exported from `api/index.js` as a single Vercel serverless function. An optional single-superuser login gate sits over the whole API, enabled only when `AUTH_PASSWORD` (or `AUTH_PASSWORD_HASH`) is set — local dev stays open and offline by default.
+For deployment, the same Express `app` is re-exported from `api/index.js` as a single Vercel serverless function. A single-superuser login gate sits over the whole API. Local dev stays open and offline by default, but production fails closed unless `AUTH_PASSWORD_HASH`/`AUTH_PASSWORD` is set or you explicitly opt out with `AUTH_DISABLED=true`.
 
 ## License
 

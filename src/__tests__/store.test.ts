@@ -9,6 +9,7 @@ const INITIAL_STATE = {
   compareIds: [],
   hydrated: false,
   matrix: DEFAULT_MATRIX,
+  persistenceError: '',
 };
 
 function mockFetch(handler?: (url: string) => unknown) {
@@ -55,6 +56,18 @@ describe('addVehicle', () => {
     const { vehicles } = useStore.getState();
     expect(vehicles[0].id).toBe(id2);
     expect(vehicles[1].id).toBe(id1);
+  });
+
+  it('surfaces persistence errors from failed creates', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ ok: false, error: 'Database unavailable' }),
+    }));
+    useStore.getState().addVehicle({ make: 'Toyota' });
+    await vi.waitFor(() => {
+      expect(useStore.getState().persistenceError).toBe('Database unavailable');
+    });
   });
 });
 
@@ -285,5 +298,6 @@ describe('init', () => {
     const state = useStore.getState();
     expect(state.hydrated).toBe(true);
     expect(state.vehicles).toHaveLength(0);
+    expect(state.persistenceError).toBe('Network error');
   });
 });

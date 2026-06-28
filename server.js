@@ -6,6 +6,8 @@
 
 import express from 'express';
 import { fileURLToPath } from 'url';
+import dns from 'node:dns/promises';
+import net from 'node:net';
 import { GoogleGenAI } from '@google/genai';
 import { db, isLocalFile, initSchema } from './db.js';
 import { installAuthRoutes, requireAuth } from './auth.js';
@@ -214,6 +216,85 @@ function parsePrice(value) {
   return match ? Number(match[1]) : undefined;
 }
 
+function isPrivateIPv4(ip) {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+  const [a, b] = parts;
+  return (
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 192 && b === 0) ||
+    (a === 198 && (b === 18 || b === 19)) ||
+    a >= 224
+  );
+}
+
+function isPrivateIPv6(ip) {
+  const value = ip.toLowerCase();
+  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
+  if (mapped) return isPrivateIPv4(mapped[1]);
+  return (
+    value === '::' ||
+    value === '::1' ||
+    value.startsWith('fc') ||
+    value.startsWith('fd') ||
+    value.startsWith('fe80:')
+  );
+}
+
+function isPrivateAddress(address, family) {
+  if (family === 4) return isPrivateIPv4(address);
+  if (family === 6) return isPrivateIPv6(address);
+  return true;
+}
+
+async function validatePublicHttpUrl(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('URL is not valid.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('Only http and https URLs can be scraped.');
+  }
+  if (!parsed.hostname || parsed.username || parsed.password) {
+    throw new Error('URL must include a plain public hostname.');
+  }
+  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (host === 'localhost' || host.endsWith('.localhost')) {
+    throw new Error('Localhost URLs cannot be scraped.');
+  }
+
+  const literalFamily = net.isIP(host);
+  const addresses = literalFamily
+    ? [{ address: host, family: literalFamily }]
+    : await dns.lookup(host, { all: true, verbatim: true });
+
+  if (!addresses.length || addresses.some(a => isPrivateAddress(a.address, a.family))) {
+    throw new Error('Only public internet hosts can be scraped.');
+  }
+  return parsed;
+}
+
+async function fetchPublicHtml(rawUrl, options, maxRedirects = 3) {
+  let url = await validatePublicHttpUrl(rawUrl);
+  for (let i = 0; i <= maxRedirects; i += 1) {
+    const response = await fetch(url, { ...options, redirect: 'manual' });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+
+    const location = response.headers.get('location');
+    if (!location) return response;
+    url = await validatePublicHttpUrl(new URL(location, url).toString());
+  }
+  throw new Error('Too many redirects while scraping.');
+}
+
 app.get('/api/scrape-html', async (req, res) => {
   try {
     const url = String(req.query.url || '').trim();
@@ -222,7 +303,7 @@ app.get('/api/scrape-html', async (req, res) => {
     }
 
     const MAX_HTML_BYTES = 5 * 1024 * 1024;
-    const response = await fetch(url, {
+    const response = await fetchPublicHtml(url, {
       headers: {
         'user-agent': 'AutoBrowse/1.0',
         accept: 'text/html,application/xhtml+xml',
@@ -239,7 +320,11 @@ app.get('/api/scrape-html', async (req, res) => {
       return res.status(502).json({ ok: false, error: `Response too large (${(contentLength / 1024 / 1024).toFixed(1)} MB).` });
     }
 
-    const html = await response.text();
+    const htmlBuffer = await response.arrayBuffer();
+    if (htmlBuffer.byteLength > MAX_HTML_BYTES) {
+      return res.status(502).json({ ok: false, error: `Response too large (${(htmlBuffer.byteLength / 1024 / 1024).toFixed(1)} MB).` });
+    }
+    const html = new TextDecoder().decode(htmlBuffer);
     const title = extractMeta(html, 'og:title') || extractTag(html, 'title');
     const description = extractMeta(html, 'description') || extractMeta(html, 'og:description');
     const image = extractMeta(html, 'og:image') || extractMeta(html, 'twitter:image');

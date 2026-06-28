@@ -10,9 +10,9 @@
 //                       the password hash/password so sessions are still signed)
 //   AUTH_SESSION_DAYS   session lifetime in days (default 30)
 //
-// The gate is ENABLED only when a password is configured. With no password set
-// (the default for local dev) every request passes through, so `npm run dev`
-// keeps working fully offline with no login.
+// The gate is ENABLED when a password is configured. With no password set, local
+// dev stays open by default; production fails closed unless AUTH_DISABLED=true is
+// set deliberately.
 //
 // Sessions are stateless: a signed, expiring token in an HttpOnly cookie. No
 // server-side session store is needed, which is what makes this work across
@@ -26,11 +26,15 @@ const PASSWORD_HASH = process.env.AUTH_PASSWORD_HASH || ''; // "saltHex:hashHex"
 const SECRET = process.env.AUTH_SECRET || PASSWORD_HASH || PASSWORD;
 const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS) || 30;
 const COOKIE = 'ab_session';
+const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
+const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
 
-// Enabled only when a credential is configured.
-export const authEnabled = Boolean(PASSWORD || PASSWORD_HASH);
+export const authMisconfigured = IS_PRODUCTION && !AUTH_DISABLED && !PASSWORD && !PASSWORD_HASH;
+export const authEnabled = !AUTH_DISABLED && Boolean(PASSWORD || PASSWORD_HASH);
 
-if (!authEnabled) {
+if (authMisconfigured) {
+  console.error('Auth: MISCONFIGURED — set AUTH_PASSWORD_HASH/AUTH_PASSWORD or explicit AUTH_DISABLED=true.');
+} else if (!authEnabled) {
   console.warn('Auth: DISABLED (no AUTH_PASSWORD / AUTH_PASSWORD_HASH set) — API is open.');
 } else {
   console.log(`Auth: enabled for user "${USERNAME}".`);
@@ -155,6 +159,9 @@ function recordFail(ip) {
 
 // Middleware that rejects unauthenticated requests. No-op when auth is disabled.
 export function requireAuth(req, res, next) {
+  if (authMisconfigured) {
+    return res.status(503).json({ ok: false, error: 'Authentication is not configured on this deployment.' });
+  }
   if (!authEnabled) return next();
   const cookies = parseCookies(req);
   if (verifyToken(cookies[COOKIE])) return next();
@@ -167,11 +174,22 @@ export function installAuthRoutes(app) {
   // GET /api/auth — session/config status used by the frontend gate.
   app.get('/api/auth', (req, res) => {
     const cookies = parseCookies(req);
+    if (authMisconfigured) {
+      return res.status(503).json({
+        ok: false,
+        required: true,
+        authed: false,
+        error: 'Authentication is not configured on this deployment.',
+      });
+    }
     res.json({ ok: true, required: authEnabled, authed: !authEnabled || verifyToken(cookies[COOKIE]) });
   });
 
   // POST /api/login — { username?, password } → sets the session cookie.
   app.post('/api/login', (req, res) => {
+    if (authMisconfigured) {
+      return res.status(503).json({ ok: false, error: 'Authentication is not configured on this deployment.' });
+    }
     if (!authEnabled) return res.json({ ok: true, authed: true });
 
     const ip = clientIp(req);

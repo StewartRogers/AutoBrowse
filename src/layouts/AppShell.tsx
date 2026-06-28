@@ -13,6 +13,8 @@ interface Props {
 export default function AppShell({ children, onAddVehicle }: Props) {
   const compareIds = useStore(s => s.compareIds);
   const vehicles = useStore(s => s.vehicles);
+  const persistenceError = useStore(s => s.persistenceError);
+  const clearPersistenceError = useStore(s => s.clearPersistenceError);
   const activeCount = vehicles.filter(v => !v.archived).length;
   const location = useLocation();
 
@@ -95,6 +97,12 @@ export default function AppShell({ children, onAddVehicle }: Props) {
 
       <main className="app-main">
         <div className="app-content fade-in">
+          {persistenceError && (
+            <div className={styles.saveWarning} role="alert">
+              <span>{persistenceError}</span>
+              <button type="button" onClick={clearPersistenceError}>Dismiss</button>
+            </div>
+          )}
           {children}
         </div>
       </main>

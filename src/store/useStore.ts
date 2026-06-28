@@ -14,42 +14,59 @@ import {
 const api = {
   async getVehicles(): Promise<Vehicle[]> {
     const r = await fetch('/api/vehicles');
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || `Failed to load vehicles (${r.status}).`);
     if (!j.ok) return [];
     // Upgrade any legacy pricing blobs (manual sellingPrice, numeric fees) to the
     // current shape on load, so the rest of the app can trust the Pricing type.
     return (j.vehicles as Vehicle[]).map(v => ({ ...v, pricing: migratePricing(v.pricing) }));
   },
-  saveVehicle(v: Vehicle) {
-    fetch(`/api/vehicles/${v.id}`, {
+  async saveVehicle(v: Vehicle) {
+    const r = await fetch(`/api/vehicles/${v.id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(v),
-    }).catch(console.error);
+    });
+    await expectOk(r, 'save vehicle');
   },
-  createVehicle(v: Vehicle) {
-    fetch('/api/vehicles', {
+  async createVehicle(v: Vehicle) {
+    const r = await fetch('/api/vehicles', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(v),
-    }).catch(console.error);
+    });
+    await expectOk(r, 'create vehicle');
   },
-  deleteVehicle(id: string) {
-    fetch(`/api/vehicles/${id}`, { method: 'DELETE' }).catch(console.error);
+  async deleteVehicle(id: string) {
+    const r = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
+    await expectOk(r, 'delete vehicle');
   },
   async getMatrix(): Promise<MatrixFactor[] | null> {
     const r = await fetch('/api/matrix');
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j?.error || `Failed to load matrix (${r.status}).`);
     return j.ok && j.matrix ? j.matrix : null;
   },
-  saveMatrix(matrix: MatrixFactor[]) {
-    fetch('/api/matrix', {
+  async saveMatrix(matrix: MatrixFactor[]) {
+    const r = await fetch('/api/matrix', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(matrix),
-    }).catch(console.error);
+    });
+    await expectOk(r, 'save matrix');
   },
 };
+
+async function expectOk(response: Response, action: string): Promise<void> {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || payload?.ok === false) {
+    throw new Error(payload?.error || `Could not ${action} (${response.status}).`);
+  }
+}
+
+function persistFailure(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 // ─── Store interface ─────────────────────────────────────────────────────────
 
@@ -58,6 +75,7 @@ export interface AppState {
   matrix: MatrixFactor[];
   compareIds: string[];
   hydrated: boolean;
+  persistenceError: string;
 
   // Lifecycle
   init: () => Promise<void>;
@@ -78,6 +96,7 @@ export interface AppState {
 
   // Matrix actions
   setMatrix: (matrix: MatrixFactor[]) => void;
+  clearPersistenceError: () => void;
 }
 
 // ─── Store ───────────────────────────────────────────────────────────────────
@@ -87,6 +106,7 @@ export const useStore = create<AppState>()((set) => ({
   matrix: DEFAULT_MATRIX,
   compareIds: [],
   hydrated: false,
+  persistenceError: '',
 
   async init() {
     try {
@@ -110,7 +130,7 @@ export const useStore = create<AppState>()((set) => ({
     } catch (err) {
       console.error('AutoBrowse: failed to load from API —', err);
       // Still mark hydrated so the app renders; will be empty
-      set({ hydrated: true });
+      set({ hydrated: true, persistenceError: persistFailure(err) });
     }
   },
 
@@ -125,7 +145,10 @@ export const useStore = create<AppState>()((set) => ({
       viewedAt: Date.now(),
     };
     set(s => ({ vehicles: [nv, ...s.vehicles] }));
-    api.createVehicle(nv);
+    void api.createVehicle(nv).catch(err => {
+      console.error('AutoBrowse: failed to create vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
     return nv.id;
   },
 
@@ -139,7 +162,10 @@ export const useStore = create<AppState>()((set) => ({
       });
       return { vehicles };
     });
-    if (updated) api.saveVehicle(updated);
+    if (updated) void api.saveVehicle(updated).catch(err => {
+      console.error('AutoBrowse: failed to save vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   replaceVehicle(id, full) {
@@ -147,7 +173,10 @@ export const useStore = create<AppState>()((set) => ({
     set(s => ({
       vehicles: s.vehicles.map(existing => existing.id === id ? v : existing),
     }));
-    api.saveVehicle(v);
+    void api.saveVehicle(v).catch(err => {
+      console.error('AutoBrowse: failed to save vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   removeVehicle(id) {
@@ -155,7 +184,10 @@ export const useStore = create<AppState>()((set) => ({
       vehicles: s.vehicles.filter(v => v.id !== id),
       compareIds: s.compareIds.filter(cid => cid !== id),
     }));
-    api.deleteVehicle(id);
+    void api.deleteVehicle(id).catch(err => {
+      console.error('AutoBrowse: failed to delete vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   duplicateVehicle(id) {
@@ -176,7 +208,10 @@ export const useStore = create<AppState>()((set) => ({
       arr.splice(idx + 1, 0, copy);
       return { ...s, vehicles: arr };
     });
-    if (copy) api.createVehicle(copy);
+    if (copy) void api.createVehicle(copy).catch(err => {
+      console.error('AutoBrowse: failed to duplicate vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
     return newId;
   },
 
@@ -194,7 +229,10 @@ export const useStore = create<AppState>()((set) => ({
         compareIds: wasActive ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) api.saveVehicle(updated);
+    if (updated) void api.saveVehicle(updated).catch(err => {
+      console.error('AutoBrowse: failed to save vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   setExcluded(id, excluded, reason = '') {
@@ -215,7 +253,10 @@ export const useStore = create<AppState>()((set) => ({
         compareIds: excluded ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) api.saveVehicle(updated);
+    if (updated) void api.saveVehicle(updated).catch(err => {
+      console.error('AutoBrowse: failed to save vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   touchViewed(id) {
@@ -228,7 +269,10 @@ export const useStore = create<AppState>()((set) => ({
       });
       return { vehicles };
     });
-    if (updated) api.saveVehicle(updated);
+    if (updated) void api.saveVehicle(updated).catch(err => {
+      console.error('AutoBrowse: failed to save vehicle —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
   },
 
   setCompareIds(ids) {
@@ -245,7 +289,14 @@ export const useStore = create<AppState>()((set) => ({
 
   setMatrix(matrix) {
     set({ matrix });
-    api.saveMatrix(matrix);
+    void api.saveMatrix(matrix).catch(err => {
+      console.error('AutoBrowse: failed to save matrix —', err);
+      set({ persistenceError: persistFailure(err) });
+    });
+  },
+
+  clearPersistenceError() {
+    set({ persistenceError: '' });
   },
 
 }));

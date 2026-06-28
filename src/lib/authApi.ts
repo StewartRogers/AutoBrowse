@@ -5,13 +5,15 @@
 export interface AuthStatus {
   required: boolean; // server has a password configured
   authed: boolean;   // current request carries a valid session (or auth is off)
+  error?: string;
 }
 
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   try {
     const r = await fetch('/api/auth');
-    const j = await r.json();
+    const j = await r.json().catch(() => ({}));
     if (j?.ok) return { required: !!j.required, authed: !!j.authed };
+    if (j?.error) return { required: true, authed: false, error: j.error };
   } catch {
     /* fall through */
   }

@@ -108,6 +108,30 @@
   color: var(--ink);
 }
 
+.saveWarning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--red, #c0392b) 35%, var(--line));
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--red, #c0392b) 8%, var(--paper));
+  color: var(--ink);
+  font-size: 13px;
+  line-height: 1.4;
+}
+.saveWarning button {
+  flex-shrink: 0;
+  border: 0;
+  background: transparent;
+  color: var(--red, #c0392b);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 /* Compact sidebar for iPad landscape / mid-size tablets */
 @media (max-width: 1180px) {
   .brand {
