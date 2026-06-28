@@ -274,7 +274,7 @@ function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) =
   // Picking a type re-applies the catalog label + default tax treatment (clears any override).
   const onFeeType = (id: string, type: FeeType) => {
     const e = feeCatalogEntry(type);
-    setFee(id, { type, label: e.label, taxable: e.taxableDefault, taxableOverridden: false });
+    setFee(id, { type, label: e.label, gst: e.gstDefault, pst: e.pstDefault, taxOverridden: false });
   };
   const addFee = () => setP({ fees: [...p.fees, makeFee('documentation')] });
   const removeFee = (id: string) => setP({ fees: p.fees.filter(f => f.id !== id) });
@@ -306,24 +306,29 @@ function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) =
             const cat = feeCatalogEntry(f.type);
             return (
               <div key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto auto', gap: 6, alignItems: 'center' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 96px auto auto auto', gap: 6, alignItems: 'center' }}>
                   <select className="input select" value={f.type} onChange={e => onFeeType(f.id, e.target.value as FeeType)}>
                     {FEE_CATALOG.map(c => <option key={c.type} value={c.type}>{c.label}</option>)}
                   </select>
                   <MoneyInput value={f.amount} onChange={amount => setFee(f.id, { amount: Math.max(0, amount) })} />
-                  <button type="button" className="btn btn-secondary" style={{ fontSize: 11 }}
-                    title="Taxable fees are added to the GST/PST base before tax; non-taxable fees pass through after tax"
-                    onClick={() => setFee(f.id, { taxable: !f.taxable, taxableOverridden: true })}>
-                    {f.taxable ? 'Taxable' : 'No tax'}
+                  <button type="button" className="btn btn-secondary" style={{ fontSize: 11, opacity: f.gst ? 1 : 0.45 }}
+                    title="Toggle GST (5%) on this fee"
+                    onClick={() => setFee(f.id, { gst: !f.gst, taxOverridden: true })}>
+                    GST
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ fontSize: 11, opacity: f.pst ? 1 : 0.45 }}
+                    title="Toggle BC PST on this fee"
+                    onClick={() => setFee(f.id, { pst: !f.pst, taxOverridden: true })}>
+                    PST
                   </button>
                   <button type="button" className="btn btn-ghost" style={{ fontSize: 11 }} onClick={() => removeFee(f.id)}>✕</button>
                 </div>
                 {f.type === 'custom' && (
                   <input className="input" style={{ fontSize: 12 }} value={f.label} placeholder="Fee name" onChange={e => setFee(f.id, { label: e.target.value })} />
                 )}
-                {(cat.verify || f.taxableOverridden || cat.note) && (
-                  <span style={{ fontSize: 11, color: f.taxableOverridden ? 'var(--ink-soft)' : 'var(--ink-faint)' }}>
-                    {f.taxableOverridden && 'Tax manually set. '}
+                {(cat.verify || f.taxOverridden || cat.note) && (
+                  <span style={{ fontSize: 11, color: f.taxOverridden ? 'var(--ink-soft)' : 'var(--ink-faint)' }}>
+                    {f.taxOverridden && 'Tax manually set. '}
                     {cat.verify && 'Verify against your bill of sale. '}
                     {cat.note}
                   </span>
@@ -371,7 +376,7 @@ function PricingTab({ v, update }: { v: Vehicle; update: (p: Partial<Vehicle>) =
           <div className={styles.otdRow}><span>PST ({tax.pstRate}%)</span><span className="num">{money(tax.pst)}</span></div>
           {tax.luxuryTax > 0 && <div className={styles.otdRow}><span>Luxury tax</span><span className="num">{money(tax.luxuryTax)}</span></div>}
           {tax.fees.map((f, i) => (
-            <div key={i} className={styles.otdRow}><span>{f.label}{f.taxable ? '' : ' (no tax)'}</span><span className="num">{money(f.amount)}</span></div>
+            <div key={i} className={styles.otdRow}><span>{f.label}{!f.gst && !f.pst ? ' (no tax)' : !f.gst ? ' (PST only)' : !f.pst ? ' (GST only)' : ''}</span><span className="num">{money(f.amount)}</span></div>
           ))}
           {p.incentives > 0 && <div className={`${styles.otdRow} ${styles.green}`}><span>Incentives</span><span className="num">−{money(p.incentives)}</span></div>}
           {p.tradeValue > 0 && <div className={`${styles.otdRow} ${styles.note}`}><span>Trade-in (applied to loan)</span><span className="num">−{money(p.tradeValue)}</span></div>}

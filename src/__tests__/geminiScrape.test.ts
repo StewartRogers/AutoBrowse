@@ -68,7 +68,7 @@ describe('scrapeVehicleFromUrl', () => {
     if (result.ok) {
       expect(result.data.pricing?.msrp).toBe(45000);
       expect(result.data.pricing?.discount).toBe(2000); // 45000 − 43000 (selling price is derived)
-      expect(result.data.pricing?.fees?.[0]).toMatchObject({ type: 'documentation', amount: 600, taxable: true, taxableOverridden: false });
+      expect(result.data.pricing?.fees?.[0]).toMatchObject({ type: 'documentation', amount: 600, gst: true, pst: true, taxOverridden: false });
     }
   });
 

@@ -84,6 +84,91 @@ input, textarea, select { font-family: var(--sans); font-size: inherit; }
   }
 }
 
+/* ── Mobile: sidebar off-canvas ── */
+@media (max-width: 768px) {
+  .app-sidebar {
+    transform: translateX(-100%);
+    transition: transform .25s ease;
+    width: var(--sidebar-w);
+    z-index: 300;
+  }
+  .app-sidebar.open {
+    transform: translateX(0);
+  }
+  .app-main {
+    margin-left: 0;
+  }
+  .app-content {
+    padding-top: 64px;
+    padding-left: var(--content-pad);
+    padding-right: var(--content-pad);
+  }
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+@media (max-width: 768px) {
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(46,38,32,.35);
+    z-index: 250;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .25s ease;
+  }
+  .sidebar-backdrop.visible {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.mobile-header {
+  display: none;
+}
+@media (max-width: 768px) {
+  .mobile-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 52px;
+    padding: 0 var(--content-pad);
+    background: var(--card);
+    border-bottom: 1px solid var(--line);
+    z-index: 200;
+  }
+}
+
+.hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background .12s;
+}
+.hamburger:hover {
+  background: var(--paper-2);
+}
+.mobile-brand {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
 /* ── Card ── */
 .card {
   background: var(--card);

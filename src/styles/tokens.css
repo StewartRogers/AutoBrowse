@@ -49,3 +49,9 @@
     --content-pad: 24px;
   }
 }
+
+@media (max-width: 768px) {
+  :root {
+    --content-pad: 16px;
+  }
+}

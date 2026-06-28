@@ -59,33 +59,39 @@ export type SellerType = 'dealer' | 'private';
 export type FeeType =
   | 'documentation' | 'finance' | 'freight_pdi' | 'registration_icbc'
   | 'tire_levy' | 'ac_excise' | 'vsa_consumer_fee' | 'battery_levy'
-  | 'extended_warranty' | 'custom';
+  | 'extended_warranty' | 'delivery_destination' | 'ppsa' | 'environmental'
+  | 'custom';
 
 export interface FeeCatalogEntry {
   type: FeeType;
   label: string;
-  taxableDefault: boolean;
-  verify: boolean;   // true → nudge the user to confirm against the bill of sale
+  gstDefault: boolean;   // GST (5%) applies to this fee by default
+  pstDefault: boolean;   // BC PST applies to this fee by default
+  verify: boolean;       // true → nudge the user to confirm against the bill of sale
   note?: string;
 }
 
-// Common BC dealer-purchase fees and their default tax treatment. Editable data —
-// adjust as rules are confirmed. Sources: a fee that forms part of the purchase
+// Common BC dealer-purchase fees and their default tax treatment. Each fee has
+// independent GST/PST defaults. Sources: a fee that forms part of the purchase
 // price is taxable (PST Bulletin 116, GST+PST); financial services (a genuine
 // credit-arranging fee) are GST-exempt under the federal Excise Tax Act; government
-// registration fees carry no GST/PST. The CONFIDENT entries are settled defaults;
-// the rest are marked verify so the UI prompts the user to check the bill of sale.
+// registration fees carry no GST/PST; eco levies (tire, A/C, battery) are
+// government-mandated pass-throughs — GST applies, PST-exempt. The CONFIDENT
+// entries have verify=false; the rest prompt the user to check the bill of sale.
 export const FEE_CATALOG: FeeCatalogEntry[] = [
-  { type: 'documentation',     label: 'Documentation',       taxableDefault: true,  verify: false },
-  { type: 'finance',           label: 'Finance fee',         taxableDefault: false, verify: false, note: 'Exempt only if it is a genuine financing fee; if it is dealer margin relabeled, it is taxable.' },
-  { type: 'freight_pdi',       label: 'Freight / PDI',       taxableDefault: true,  verify: false },
-  { type: 'registration_icbc', label: 'Registration (ICBC)', taxableDefault: false, verify: false },
-  { type: 'tire_levy',         label: 'Tire levy',           taxableDefault: true,  verify: true },
-  { type: 'ac_excise',         label: 'A/C excise tax',      taxableDefault: true,  verify: true },
-  { type: 'vsa_consumer_fee',  label: 'VSA consumer fee',    taxableDefault: true,  verify: true },
-  { type: 'battery_levy',      label: 'Battery levy',        taxableDefault: true,  verify: true },
-  { type: 'extended_warranty', label: 'Extended warranty',   taxableDefault: true,  verify: true },
-  { type: 'custom',            label: 'Custom fee',          taxableDefault: false, verify: true },
+  { type: 'documentation',         label: 'Documentation',               gstDefault: true,  pstDefault: true,  verify: false },
+  { type: 'finance',               label: 'Finance fee',                 gstDefault: false, pstDefault: false, verify: false, note: 'Exempt only if it is a genuine financing fee; if it is dealer margin relabeled, it is taxable.' },
+  { type: 'freight_pdi',           label: 'Freight / PDI',               gstDefault: true,  pstDefault: true,  verify: false },
+  { type: 'delivery_destination',  label: 'Delivery & destination',      gstDefault: true,  pstDefault: true,  verify: false },
+  { type: 'registration_icbc',     label: 'Registration (ICBC)',         gstDefault: false, pstDefault: false, verify: false },
+  { type: 'ppsa',                  label: 'PPSA fee',                    gstDefault: true,  pstDefault: true,  verify: false, note: 'The actual gov filing is exempt but dealers typically bundle it as a taxable admin fee.' },
+  { type: 'tire_levy',             label: 'Tire levy',                   gstDefault: true,  pstDefault: false, verify: false },
+  { type: 'ac_excise',             label: 'A/C excise tax',              gstDefault: true,  pstDefault: false, verify: false },
+  { type: 'battery_levy',          label: 'Battery levy',                gstDefault: true,  pstDefault: false, verify: false },
+  { type: 'environmental',         label: 'Environmental fee',           gstDefault: true,  pstDefault: false, verify: true, note: 'Eco levies are PST-exempt; generic dealer "environmental admin" fees are usually fully taxable.' },
+  { type: 'vsa_consumer_fee',      label: 'VSA consumer fee',            gstDefault: true,  pstDefault: true,  verify: true },
+  { type: 'extended_warranty',     label: 'Extended warranty',           gstDefault: true,  pstDefault: true,  verify: true },
+  { type: 'custom',                label: 'Custom fee',                  gstDefault: false, pstDefault: false, verify: true },
 ];
 
 export function feeCatalogEntry(type: FeeType): FeeCatalogEntry {
@@ -93,21 +99,22 @@ export function feeCatalogEntry(type: FeeType): FeeCatalogEntry {
 }
 
 // A single line-item fee. `type` is chosen from FEE_CATALOG, which fills `label`
-// and the default `taxable`. The user can still flip `taxable`; when they do we set
-// `taxableOverridden` so the default isn't silently re-applied on the next change.
+// and the default GST/PST flags. The user can still flip them; when they do we set
+// `taxOverridden` so the defaults aren't silently re-applied on the next type change.
 export interface Fee {
   id: string;
   type: FeeType;
   label: string;
   amount: number;
-  taxable: boolean;
-  taxableOverridden: boolean;
+  gst: boolean;           // GST (5%) applies
+  pst: boolean;           // BC PST applies
+  taxOverridden: boolean;
 }
 
 // Build a fresh fee row of the given type, pre-filled from the catalog.
 export function makeFee(type: FeeType = 'custom'): Fee {
   const e = feeCatalogEntry(type);
-  return { id: uid(), type, label: e.label, amount: 0, taxable: e.taxableDefault, taxableOverridden: false };
+  return { id: uid(), type, label: e.label, amount: 0, gst: e.gstDefault, pst: e.pstDefault, taxOverridden: false };
 }
 
 // Best-effort mapping of a free-form legacy fee label onto a catalog type.
@@ -116,30 +123,48 @@ export function inferFeeType(label: string): FeeType {
   if (l.includes('doc')) return 'documentation';
   if (l.includes('financ')) return 'finance';
   if (l.includes('freight') || l.includes('pdi')) return 'freight_pdi';
+  if (l.includes('delivery') || l.includes('destination')) return 'delivery_destination';
   if (l.includes('regist') || l.includes('icbc')) return 'registration_icbc';
+  if (l.includes('ppsa')) return 'ppsa';
   if (l.includes('tire') || l.includes('tyre')) return 'tire_levy';
   if (l.includes('a/c') || l.includes('excise') || l.includes('air con')) return 'ac_excise';
   if (l.includes('vsa')) return 'vsa_consumer_fee';
   if (l.includes('battery')) return 'battery_levy';
+  if (l.includes('environ')) return 'environmental';
   if (l.includes('warranty')) return 'extended_warranty';
   return 'custom';
 }
 
 // Normalize one stored/legacy fee into the structured shape. Accepts the old
-// { label, amount, taxable } objects (and already-migrated rows) and fills in
-// id/type/taxableOverridden without losing the entered amount or label.
+// { label, amount, taxable } objects (and already-migrated rows with gst/pst)
+// and fills in id/type/taxOverridden without losing the entered amount or label.
 export function migrateFee(raw: unknown): Fee {
   const ff = (raw ?? {}) as Record<string, unknown>;
   const label = String(ff.label ?? 'Fee');
   const amount = Number.isFinite(Number(ff.amount)) ? Number(ff.amount) : 0;
-  const taxable = !!ff.taxable;
   const validType = FEE_CATALOG.some(c => c.type === ff.type);
   const type = (validType ? ff.type : inferFeeType(label)) as FeeType;
-  const taxableOverridden = ff.taxableOverridden !== undefined
-    ? !!ff.taxableOverridden
-    : taxable !== feeCatalogEntry(type).taxableDefault;
+  const cat = feeCatalogEntry(type);
   const id = typeof ff.id === 'string' && ff.id ? ff.id : uid();
-  return { id, type, label, amount, taxable, taxableOverridden };
+
+  // Already has per-tax flags (new format)
+  if (typeof ff.gst === 'boolean') {
+    const gst = !!ff.gst;
+    const pst = !!ff.pst;
+    const taxOverridden = ff.taxOverridden !== undefined
+      ? !!ff.taxOverridden
+      : gst !== cat.gstDefault || pst !== cat.pstDefault;
+    return { id, type, label, amount, gst, pst, taxOverridden };
+  }
+
+  // Old format: single `taxable` boolean → map to per-tax flags
+  const taxable = !!ff.taxable;
+  const gst = taxable;
+  const pst = taxable;
+  const taxOverridden = ff.taxableOverridden !== undefined
+    ? !!ff.taxableOverridden
+    : gst !== cat.gstDefault || pst !== cat.pstDefault;
+  return { id, type, label, amount, gst, pst, taxOverridden };
 }
 
 export interface Pricing {
@@ -148,7 +173,7 @@ export interface Pricing {
   incentives: number; // post-tax rebate (reduces the out-the-door total, not the taxable base)
   tradeValue: number;
   taxRate: number;    // % — legacy flat rate; still drives lease tax (leaseCalc). BC purchase tax is computed from the fields below.
-  fees: Fee[];        // itemized; each fee is taxed (or not) per its `taxable` flag
+  fees: Fee[];        // itemized; each fee carries independent GST/PST flags
   // BC vehicle-tax inputs (see bcTax / PST Bulletin 308). All optional with
   // dealer/passenger/non-ZEV defaults so existing data and callers don't break.
   sellerType?: SellerType;       // default 'dealer' (private sales pay no GST)
@@ -497,8 +522,11 @@ function pstRate(tiers: PstTier[], base: number): number {
 export interface FeeBreakdown {
   label: string;
   amount: number;     // face value (added to the total exactly once)
-  taxable: boolean;
-  taxApplied: number; // GST+PST attributable to this fee (0 for non-taxable fees)
+  gst: boolean;
+  pst: boolean;
+  feeGst: number;     // GST attributable to this fee
+  feePst: number;     // PST attributable to this fee
+  taxApplied: number; // total tax on this fee (feeGst + feePst)
 }
 
 export interface TaxBreakdown {
@@ -532,14 +560,18 @@ export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
   const sellingPrice = Math.max(0, msrp - discount);
   const sellerType = p.sellerType ?? 'dealer';
   const fees = p.fees ?? [];
+  const isDealer = sellerType === 'dealer';
 
-  // Taxable fees (doc/admin) are added to the GST/PST base before tax (Bulletin 116).
-  const taxableFeeTotal = fees.reduce((s, f) => s + (f.taxable ? (f.amount || 0) : 0), 0);
+  // Fees with GST/PST flags independently contribute to the GST and PST bases.
+  // A fee can be GST-only (eco levies), PST-only, both, or neither.
+  const gstFeeTotal = fees.reduce((s, f) => s + (f.gst ? (f.amount || 0) : 0), 0);
+  const pstFeeTotal = fees.reduce((s, f) => s + (f.pst ? (f.amount || 0) : 0), 0);
 
   // Dealer: a trade-in reduces both GST and PST. Private sale: PST on the full
   // price, no GST, and a trade-in does not reduce the base.
-  const tradeReduction = sellerType === 'dealer' ? (p.tradeValue || 0) : 0;
-  const taxableBase = Math.max(0, sellingPrice - tradeReduction + taxableFeeTotal);
+  const tradeReduction = isDealer ? (p.tradeValue || 0) : 0;
+  const gstBase = Math.max(0, sellingPrice - tradeReduction + gstFeeTotal);
+  const pstBase = Math.max(0, sellingPrice - tradeReduction + pstFeeTotal);
 
   // Federal luxury tax: only above $100k, the LESSER of 10% of price or 20% of the
   // amount over $100k. Computed on the selling price, before the fee adjustments.
@@ -547,26 +579,25 @@ export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
     ? Math.min(0.10 * sellingPrice, 0.20 * (sellingPrice - 100_000))
     : 0;
 
-  // PST band is chosen from the taxableBase, so a taxable fee can push the price
+  // PST band is chosen from the pstBase, so a PST-taxable fee can push the price
   // into a higher tier. GST and PST are parallel — neither is charged on the other
   // — but GST is charged on top of the luxury tax (existing rule).
-  const rate = pstRate(pstTiers(p, asOf), taxableBase);
-  const pst = taxableBase * rate;
-  const gst = sellerType === 'dealer' ? 0.05 * (taxableBase + luxuryTax) : 0;
+  const rate = pstRate(pstTiers(p, asOf), pstBase);
+  const pst = pstBase * rate;
+  const gst = isDealer ? 0.05 * (gstBase + luxuryTax) : 0;
   const totalTax = gst + pst + luxuryTax;
 
-  // Per-fee tax attribution for display: a taxable fee carries GST (dealer) + PST
-  // at the vehicle's rate; a non-taxable fee carries nothing.
-  const feeTaxRate = (sellerType === 'dealer' ? 0.05 : 0) + rate;
-  const feeBreakdown: FeeBreakdown[] = fees.map(f => ({
-    label: f.label,
-    amount: f.amount || 0,
-    taxable: !!f.taxable,
-    taxApplied: f.taxable ? (f.amount || 0) * feeTaxRate : 0,
-  }));
+  // Per-fee tax attribution for display: each fee independently carries its GST
+  // and/or PST based on its own flags. Private sales never have GST.
+  const feeBreakdown: FeeBreakdown[] = fees.map(f => {
+    const amt = f.amount || 0;
+    const fg = (f.gst && isDealer) ? amt * 0.05 : 0;
+    const fp = f.pst ? amt * rate : 0;
+    return { label: f.label, amount: amt, gst: !!f.gst, pst: !!f.pst, feeGst: fg, feePst: fp, taxApplied: fg + fp };
+  });
 
   // Every fee's principal is added to the total exactly once here; the tax on the
-  // taxable ones is already inside totalTax (via taxableBase), not re-added.
+  // taxable ones is already inside totalTax (via gstBase/pstBase), not re-added.
   const allFees = fees.reduce((s, f) => s + (f.amount || 0), 0);
   const outTheDoor = sellingPrice + totalTax + allFees - (p.incentives || 0);
 

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { fetchAuthStatus, logout } from '../lib/authApi';
@@ -17,6 +17,11 @@ export default function AppShell({ children, onAddVehicle }: Props) {
   const clearPersistenceError = useStore(s => s.clearPersistenceError);
   const activeCount = vehicles.filter(v => !v.archived).length;
   const location = useLocation();
+
+  // Mobile sidebar state
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
 
   // Show the sign-out control only when the server has auth enabled.
   const [authRequired, setAuthRequired] = useState(false);
@@ -37,7 +42,21 @@ export default function AppShell({ children, onAddVehicle }: Props) {
 
   return (
     <div className="app-layout">
-      <aside className="app-sidebar">
+      {/* Mobile top bar */}
+      <header className="mobile-header">
+        <button className="hamburger" onClick={() => setSidebarOpen(o => !o)} aria-label="Toggle menu">
+          <Icon name={sidebarOpen ? 'x' : 'menu'} size={22} />
+        </button>
+        <span className="mobile-brand">AutoBrowse</span>
+      </header>
+
+      {/* Backdrop (mobile only) */}
+      <div
+        className={`sidebar-backdrop${sidebarOpen ? ' visible' : ''}`}
+        onClick={closeSidebar}
+      />
+
+      <aside className={`app-sidebar${sidebarOpen ? ' open' : ''}`}>
         {/* Brand */}
         <div className={styles.brand}>
           <div className={styles.brandIcon}>
@@ -51,25 +70,26 @@ export default function AppShell({ children, onAddVehicle }: Props) {
 
         {/* Nav */}
         <nav className={styles.nav}>
-          <NavLink to="/" end className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <NavLink to="/" end className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`} onClick={closeSidebar}>
             <Icon name="dashboard" size={17} />
             Dashboard
           </NavLink>
           <NavLink
             to="/garage"
             className={`${styles.navItem} ${garageActive ? styles.active : ''}`}
+            onClick={closeSidebar}
           >
             <Icon name="garage" size={17} />
             Garage
           </NavLink>
-          <NavLink to="/compare" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <NavLink to="/compare" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`} onClick={closeSidebar}>
             <Icon name="compare" size={17} />
             Compare
             {compareIds.length > 0 && (
               <span className={styles.badge}>{compareIds.length}</span>
             )}
           </NavLink>
-          <NavLink to="/matrix" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`}>
+          <NavLink to="/matrix" className={({ isActive }) => `${styles.navItem} ${isActive ? styles.active : ''}`} onClick={closeSidebar}>
             <Icon name="matrix" size={17} />
             Decision Matrix
           </NavLink>
@@ -79,7 +99,7 @@ export default function AppShell({ children, onAddVehicle }: Props) {
 
         {/* Footer */}
         <div className={styles.footer}>
-          <button className={`btn btn-primary ${styles.addBtn}`} onClick={onAddVehicle}>
+          <button className={`btn btn-primary ${styles.addBtn}`} onClick={() => { closeSidebar(); onAddVehicle(); }}>
             <Icon name="plus" size={15} />
             Add vehicle
           </button>

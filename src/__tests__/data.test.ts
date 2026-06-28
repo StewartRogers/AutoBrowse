@@ -9,9 +9,10 @@ import {
   type Pricing, type Vehicle, type Fee,
 } from '../lib/data';
 
-// Build a structured fee row (id/type/taxableOverridden filled) for tests.
+// Build a structured fee row for tests. gst/pst default to the old `taxable`
+// boolean semantics (both on or both off) for backward compat with existing tests.
 const fee = (amount: number, taxable: boolean, label = 'Fee'): Fee =>
-  ({ id: 'test', type: 'custom', label, amount, taxable, taxableOverridden: false });
+  ({ id: 'test', type: 'custom', label, amount, gst: taxable, pst: taxable, taxOverridden: false });
 
 // Fixed date so the ZEV PST schedule (active until 2027-02-22) is deterministic.
 const ASOF = new Date('2026-06-27T00:00:00');
@@ -160,17 +161,17 @@ describe('migratePricing — fee data is not lost', () => {
     };
     const fees = migratePricing(legacy).fees;
     expect(fees).toHaveLength(3);
-    // type inferred from the label; amount/taxable preserved; id assigned.
-    expect(fees[0]).toMatchObject({ type: 'documentation', amount: 600, taxable: true, taxableOverridden: false });
-    expect(fees[1]).toMatchObject({ type: 'finance', amount: 800, taxable: false, taxableOverridden: false });
-    // Unknown label → custom; taxable (true) differs from custom's default (false) → overridden.
-    expect(fees[2]).toMatchObject({ type: 'custom', label: 'Mystery surcharge', amount: 250, taxable: true, taxableOverridden: true });
+    // type inferred from the label; old taxable=true → gst+pst both true; id assigned.
+    expect(fees[0]).toMatchObject({ type: 'documentation', amount: 600, gst: true, pst: true, taxOverridden: false });
+    expect(fees[1]).toMatchObject({ type: 'finance', amount: 800, gst: false, pst: false, taxOverridden: false });
+    // Unknown label → custom; gst+pst (both true) differ from custom's defaults (both false) → overridden.
+    expect(fees[2]).toMatchObject({ type: 'custom', label: 'Mystery surcharge', amount: 250, gst: true, pst: true, taxOverridden: true });
     fees.forEach(f => expect(typeof f.id).toBe('string'));
   });
 
   it('converts the oldest numeric `fees` total into one custom row', () => {
     const fees = migratePricing({ msrp: 30000, fees: 1200 }).fees;
-    expect(fees).toEqual([expect.objectContaining({ type: 'custom', amount: 1200, taxable: false })]);
+    expect(fees).toEqual([expect.objectContaining({ type: 'custom', amount: 1200, gst: false, pst: false })]);
   });
 
   it('is idempotent on already-structured fees', () => {

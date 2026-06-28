@@ -85,6 +85,7 @@
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
 }
+@media (max-width: 480px) { .keySpecs { grid-template-columns: 1fr 1fr; } }
 .keySpec {
   padding: 10px;
   background: var(--paper-2);
@@ -127,6 +128,9 @@
 /* Every value control fills its column, so all fields line up at one width. */
 .specRow input,
 .specRow select { width: 100%; min-width: 0; }
+@media (max-width: 600px) {
+  .specRow { grid-template-columns: 1fr; gap: 4px; }
+}
 
 /* Ratings */
 .ratingSummary { padding: 16px 20px; margin-bottom: 4px; }
@@ -140,6 +144,7 @@
 }
 .ratingRow:last-child { border-bottom: none; }
 .ratingLabel { min-width: 160px; font-size: 13.5px; color: var(--ink-soft); }
+@media (max-width: 480px) { .ratingLabel { min-width: 100px; } }
 
 /* Test drive */
 .tdRow { display: flex; flex-direction: column; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--line-soft); }
