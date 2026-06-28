@@ -85,6 +85,19 @@ describe('bcTax', () => {
     expect(priv.pst).toBeCloseTo(0.12 * 200000);
   });
 
+  // ZEV dealer bracket boundaries (PST Bulletin 308, Table 2)
+  it.each([
+    [74999.99, 7],
+    [75000.00, 8],
+    [75999.99, 8],
+    [76000.00, 9],
+    [76999.99, 9],
+    [77000.00, 10],
+  ])('ZEV dealer bracket: $%s → %s%% PST', (msrp, expectedPct) => {
+    const t = bcTax(makePricing({ msrp, isZEV: true, sellerType: 'dealer', isPassengerVehicle: true }), ASOF);
+    expect(t.pstRate).toBe(expectedPct);
+  });
+
   it('federal luxury tax: lesser of 10% of price or 20% over 100k, with GST on top', () => {
     const p = makePricing({ msrp: 120000, sellerType: 'dealer' });
     const t = bcTax(p, ASOF);
@@ -107,9 +120,9 @@ describe('bcTax — derived selling price & itemized fees', () => {
     });
     const t = bcTax(p, ASOF);
     expect(t.sellingPrice).toBe(78649);     // 83,649 − 5,000
-    expect(t.pstRate).toBe(10);             // taxableBase 79,249 → 77k–125k ZEV band
+    expect(t.pstRate).toBe(10);             // bracket from 78,649 → 77k–125k ZEV band
     expect(t.gst).toBeCloseTo(3962.45);     // 5% of 79,249 (78,649 + 600 doc)
-    expect(t.pst).toBeCloseTo(7924.90);     // 10% of 79,249
+    expect(t.pst).toBeCloseTo(7924.90);     // 10% of 79,249 (78,649 + 600 PST-taxable doc)
     expect(t.outTheDoor).toBeCloseTo(91936.35); // selling + tax + 600 + 800
     // Fee tax attribution: doc fee carries GST+PST (15%), finance fee carries none.
     const doc = t.fees.find(f => f.label === 'Documentation')!;
@@ -118,11 +131,12 @@ describe('bcTax — derived selling price & itemized fees', () => {
     expect(fin.taxApplied).toBe(0);
   });
 
-  it('a taxable fee pushes the price into a higher PST band', () => {
-    // 54,900 alone is the 7% band; a 200 taxable doc fee lifts the base to 55,100 → 8%.
+  it('a PST-taxable fee does NOT push the price into a higher bracket', () => {
+    // 54,900 is the 7% band; a 200 PST-taxable fee does NOT lift the bracket
+    // (bracket is determined by selling price only), but its amount IS taxed at 7%.
     const withFee = bcTax(makePricing({ msrp: 54900, sellerType: 'dealer', fees: [fee(200, true, 'Doc')] }), ASOF);
-    expect(withFee.pstRate).toBe(8);
-    expect(withFee.pst).toBeCloseTo(0.08 * 55100);
+    expect(withFee.pstRate).toBe(7);                     // bracket from $54,900 only
+    expect(withFee.pst).toBeCloseTo(0.07 * 55100);       // tax on $54,900 + $200 fee
     const noFee = bcTax(makePricing({ msrp: 54900, sellerType: 'dealer' }), ASOF);
     expect(noFee.pstRate).toBe(7);
   });
@@ -146,6 +160,41 @@ describe('bcTax — derived selling price & itemized fees', () => {
     expect(sellingPriceOf(p)).toBe(0);
     expect(discountExceedsMsrp(p)).toBe(true);
     expect(bcTax(p, ASOF).sellingPrice).toBe(0);
+  });
+
+  it('private sale non-ZEV is flat 12% PST', () => {
+    const t = bcTax(makePricing({ msrp: 30000, sellerType: 'private' }), ASOF);
+    expect(t.pstRate).toBe(12);
+    expect(t.pst).toBeCloseTo(3600);
+    expect(t.gst).toBe(0);
+  });
+
+  it('private sale new ZEV is flat 12% PST (no exemption)', () => {
+    const t = bcTax(makePricing({ msrp: 30000, sellerType: 'private', isZEV: true }), ASOF);
+    expect(t.pstRate).toBe(12);
+    expect(t.pst).toBeCloseTo(3600);
+    expect(t.gst).toBe(0);
+  });
+
+  it('private sale used ZEV after Apr 30 2025 is flat 12% (exemption expired)', () => {
+    const postExpiry = new Date('2025-05-01T00:00:00');
+    const t = bcTax(makePricing({ msrp: 30000, sellerType: 'private', isZEV: true }), postExpiry);
+    expect(t.pstRate).toBe(12);
+    expect(t.pst).toBeCloseTo(3600);
+  });
+
+  it('GST-only fee (enviro) adds to GST base but not PST base', () => {
+    // Build a fee with gst=true, pst=false (like an environmental levy)
+    const enviroFee: Fee = { id: 'e', type: 'environmental', label: 'Enviro', amount: 100, gst: true, pst: false, taxOverridden: false };
+    const without = bcTax(makePricing({ msrp: 40000, sellerType: 'dealer' }), ASOF);
+    const withEnv = bcTax(makePricing({ msrp: 40000, sellerType: 'dealer', fees: [enviroFee] }), ASOF);
+    // PST unchanged (enviro not in PST base)
+    expect(withEnv.pst).toBeCloseTo(without.pst);
+    // GST increased by 5% of $100
+    expect(withEnv.gst - without.gst).toBeCloseTo(5);
+    // Fee attribution: GST only, no PST
+    expect(withEnv.fees[0].feeGst).toBeCloseTo(5);
+    expect(withEnv.fees[0].feePst).toBe(0);
   });
 });
 

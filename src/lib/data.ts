@@ -491,7 +491,8 @@ const PST_DEALER_PASSENGER_ZEV: PstTier[] = [
   { min: 150_000, rate: 0.20 },
 ];
 
-// Private passenger sales: ZEV and non-ZEV are identical.
+// Private passenger sales: flat 12% for both ZEV and non-ZEV. The used-ZEV PST
+// exemption (Feb 23 2022 – Apr 30 2025) has expired and no longer applies.
 const PST_PRIVATE_PASSENGER: PstTier[] = [
   { min: 0, rate: 0.12 },
   { min: 125_000, rate: 0.15 },
@@ -567,11 +568,16 @@ export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
   const gstFeeTotal = fees.reduce((s, f) => s + (f.gst ? (f.amount || 0) : 0), 0);
   const pstFeeTotal = fees.reduce((s, f) => s + (f.pst ? (f.amount || 0) : 0), 0);
 
-  // Dealer: a trade-in reduces both GST and PST. Private sale: PST on the full
-  // price, no GST, and a trade-in does not reduce the base.
+  // Dealer: a trade-in reduces both GST and PST bases. Private sale: PST on the
+  // full price, no GST, and a trade-in does not reduce the base.
   const tradeReduction = isDealer ? (p.tradeValue || 0) : 0;
   const gstBase = Math.max(0, sellingPrice - tradeReduction + gstFeeTotal);
-  const pstBase = Math.max(0, sellingPrice - tradeReduction + pstFeeTotal);
+
+  // PST bracket is determined by the vehicle's selling price alone (after trade-in),
+  // NOT including fees. Fees are taxed at the resulting rate but don't push the
+  // vehicle into a higher bracket.
+  const pstBracketBase = Math.max(0, sellingPrice - tradeReduction);
+  const pstTaxBase = Math.max(0, sellingPrice - tradeReduction + pstFeeTotal);
 
   // Federal luxury tax: only above $100k, the LESSER of 10% of price or 20% of the
   // amount over $100k. Computed on the selling price, before the fee adjustments.
@@ -579,11 +585,11 @@ export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
     ? Math.min(0.10 * sellingPrice, 0.20 * (sellingPrice - 100_000))
     : 0;
 
-  // PST band is chosen from the pstBase, so a PST-taxable fee can push the price
-  // into a higher tier. GST and PST are parallel — neither is charged on the other
-  // — but GST is charged on top of the luxury tax (existing rule).
-  const rate = pstRate(pstTiers(p, asOf), pstBase);
-  const pst = pstBase * rate;
+  // PST bracket is looked up from the vehicle price only; the rate is then applied
+  // to the full PST base (vehicle + PST-flagged fees). GST and PST are parallel —
+  // neither is charged on the other — but GST is charged on top of the luxury tax.
+  const rate = pstRate(pstTiers(p, asOf), pstBracketBase);
+  const pst = pstTaxBase * rate;
   const gst = isDealer ? 0.05 * (gstBase + luxuryTax) : 0;
   const totalTax = gst + pst + luxuryTax;
 
@@ -597,7 +603,7 @@ export function bcTax(p: Pricing, asOf: Date = new Date()): TaxBreakdown {
   });
 
   // Every fee's principal is added to the total exactly once here; the tax on the
-  // taxable ones is already inside totalTax (via gstBase/pstBase), not re-added.
+  // taxable ones is already inside totalTax (via gstBase/pstTaxBase), not re-added.
   const allFees = fees.reduce((s, f) => s + (f.amount || 0), 0);
   const outTheDoor = sellingPrice + totalTax + allFees - (p.incentives || 0);
 

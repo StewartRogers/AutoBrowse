@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": "22.x || 24.x"
   },
   "scripts": {
     "dev": "concurrently -n api,vite -c cyan,green \"node --env-file-if-exists=.env server.js\" \"vite --host 0.0.0.0\"",
