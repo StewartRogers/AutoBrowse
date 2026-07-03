@@ -16,6 +16,8 @@ npm run test:watch   # vitest watch mode
 
 Run a single test file: `npx vitest run src/__tests__/data.test.ts`
 
+Standalone dev utility (not part of the app): `node scripts/bc-tax-calc.mjs --selling 46249 --type zev --sale dealer` computes BC vehicle purchase tax from the CLI — useful for cross-checking `bcTax()` in `src/lib/data.ts` against a real dealer quote. `node scripts/hash-password.mjs '<password>'` generates an `AUTH_PASSWORD_HASH` value (see Auth below).
+
 **Type-checking:** The root `tsconfig.json` is references-only (no `include`). Running `npx tsc --noEmit` checks nothing. Always use `npx tsc -b` to type-check via project references.
 
 ## Environment

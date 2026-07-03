@@ -25,6 +25,9 @@ yarn-error.log*
 *.njsproj
 *.sln
 
+# Claude Code local/user-specific settings (settings.json is shared, tracked)
+.claude/settings.local.json*
+
 # OS files
 .DS_Store
 Thumbs.db
