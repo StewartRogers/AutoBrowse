@@ -21,22 +21,8 @@ const api = {
     // current shape on load, so the rest of the app can trust the Pricing type.
     return (j.vehicles as Vehicle[]).map(v => ({ ...v, pricing: migratePricing(v.pricing) }));
   },
-  async saveVehicle(v: Vehicle) {
-    const r = await fetch(`/api/vehicles/${v.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(v),
-    });
-    await expectOk(r, 'save vehicle');
-  },
-  async createVehicle(v: Vehicle) {
-    const r = await fetch('/api/vehicles', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(v),
-    });
-    await expectOk(r, 'create vehicle');
-  },
+  saveVehicle: (v: Vehicle) => sendJson(`/api/vehicles/${v.id}`, 'PUT', v, 'save vehicle'),
+  createVehicle: (v: Vehicle) => sendJson('/api/vehicles', 'POST', v, 'create vehicle'),
   async deleteVehicle(id: string) {
     const r = await fetch(`/api/vehicles/${id}`, { method: 'DELETE' });
     await expectOk(r, 'delete vehicle');
@@ -47,15 +33,17 @@ const api = {
     if (!r.ok) throw new Error(j?.error || `Failed to load matrix (${r.status}).`);
     return j.ok && j.matrix ? j.matrix : null;
   },
-  async saveMatrix(matrix: MatrixFactor[]) {
-    const r = await fetch('/api/matrix', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(matrix),
-    });
-    await expectOk(r, 'save matrix');
-  },
+  saveMatrix: (matrix: MatrixFactor[]) => sendJson('/api/matrix', 'PUT', matrix, 'save matrix'),
 };
+
+async function sendJson(url: string, method: 'POST' | 'PUT', body: unknown, action: string): Promise<void> {
+  const r = await fetch(url, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  await expectOk(r, action);
+}
 
 async function expectOk(response: Response, action: string): Promise<void> {
   const payload = await response.json().catch(() => ({}));
@@ -66,6 +54,26 @@ async function expectOk(response: Response, action: string): Promise<void> {
 
 function persistFailure(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// Replaces vehicle `id` with `fn(vehicle)`; `updated` is undefined if no vehicle matched.
+function patchVehicle(vehicles: Vehicle[], id: string, fn: (v: Vehicle) => Vehicle) {
+  let updated: Vehicle | undefined;
+  const next = vehicles.map(v => {
+    if (v.id !== id) return v;
+    updated = fn(v);
+    return updated;
+  });
+  return { vehicles: next, updated };
+}
+
+// Fire-and-forget write-through: mutations are optimistic, so a failed API call
+// only surfaces as a persistenceError banner (see AppShell).
+function persist(request: Promise<void>, action: string): void {
+  void request.catch(err => {
+    console.error(`AutoBrowse: failed to ${action} —`, err);
+    useStore.setState({ persistenceError: persistFailure(err) });
+  });
 }
 
 // ─── Store interface ─────────────────────────────────────────────────────────
@@ -145,27 +153,18 @@ export const useStore = create<AppState>()((set) => ({
       viewedAt: Date.now(),
     };
     set(s => ({ vehicles: [nv, ...s.vehicles] }));
-    void api.createVehicle(nv).catch(err => {
-      console.error('AutoBrowse: failed to create vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    persist(api.createVehicle(nv), 'create vehicle');
     return nv.id;
   },
 
   updateVehicle(id, patch) {
     let updated: Vehicle | undefined;
     set(s => {
-      const vehicles = s.vehicles.map(v => {
-        if (v.id !== id) return v;
-        updated = deepMerge(v, patch);
-        return updated;
-      });
-      return { vehicles };
+      const r = patchVehicle(s.vehicles, id, v => deepMerge(v, patch));
+      updated = r.updated;
+      return { vehicles: r.vehicles };
     });
-    if (updated) void api.saveVehicle(updated).catch(err => {
-      console.error('AutoBrowse: failed to save vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
   },
 
   replaceVehicle(id, full) {
@@ -173,10 +172,7 @@ export const useStore = create<AppState>()((set) => ({
     set(s => ({
       vehicles: s.vehicles.map(existing => existing.id === id ? v : existing),
     }));
-    void api.saveVehicle(v).catch(err => {
-      console.error('AutoBrowse: failed to save vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    persist(api.saveVehicle(v), 'save vehicle');
   },
 
   removeVehicle(id) {
@@ -184,10 +180,7 @@ export const useStore = create<AppState>()((set) => ({
       vehicles: s.vehicles.filter(v => v.id !== id),
       compareIds: s.compareIds.filter(cid => cid !== id),
     }));
-    void api.deleteVehicle(id).catch(err => {
-      console.error('AutoBrowse: failed to delete vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    persist(api.deleteVehicle(id), 'delete vehicle');
   },
 
   duplicateVehicle(id) {
@@ -208,71 +201,50 @@ export const useStore = create<AppState>()((set) => ({
       arr.splice(idx + 1, 0, copy);
       return { ...s, vehicles: arr };
     });
-    if (copy) void api.createVehicle(copy).catch(err => {
-      console.error('AutoBrowse: failed to duplicate vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    if (copy) persist(api.createVehicle(copy), 'duplicate vehicle');
     return newId;
   },
 
   toggleArchive(id) {
     let updated: Vehicle | undefined;
     set(s => {
-      const vehicles = s.vehicles.map(v => {
-        if (v.id !== id) return v;
-        updated = { ...v, archived: !v.archived };
-        return updated;
-      });
+      const r = patchVehicle(s.vehicles, id, v => ({ ...v, archived: !v.archived }));
+      updated = r.updated;
       const wasActive = s.vehicles.find(v => v.id === id)?.archived === false;
       return {
-        vehicles,
+        vehicles: r.vehicles,
         compareIds: wasActive ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) void api.saveVehicle(updated).catch(err => {
-      console.error('AutoBrowse: failed to save vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
   },
 
   setExcluded(id, excluded, reason = '') {
     let updated: Vehicle | undefined;
     set(s => {
-      const vehicles = s.vehicles.map(v => {
-        if (v.id !== id) return v;
-        updated = {
-          ...v,
-          archived: excluded,
-          excludeReason: excluded ? (reason || v.excludeReason || '') : '',
-          excludedAt: excluded ? Date.now() : 0,
-        };
-        return updated;
-      });
+      const r = patchVehicle(s.vehicles, id, v => ({
+        ...v,
+        archived: excluded,
+        excludeReason: excluded ? (reason || v.excludeReason || '') : '',
+        excludedAt: excluded ? Date.now() : 0,
+      }));
+      updated = r.updated;
       return {
-        vehicles,
+        vehicles: r.vehicles,
         compareIds: excluded ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) void api.saveVehicle(updated).catch(err => {
-      console.error('AutoBrowse: failed to save vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
   },
 
   touchViewed(id) {
     let updated: Vehicle | undefined;
     set(s => {
-      const vehicles = s.vehicles.map(v => {
-        if (v.id !== id) return v;
-        updated = { ...v, viewedAt: Date.now() };
-        return updated;
-      });
-      return { vehicles };
+      const r = patchVehicle(s.vehicles, id, v => ({ ...v, viewedAt: Date.now() }));
+      updated = r.updated;
+      return { vehicles: r.vehicles };
     });
-    if (updated) void api.saveVehicle(updated).catch(err => {
-      console.error('AutoBrowse: failed to save vehicle —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
   },
 
   setCompareIds(ids) {
@@ -289,14 +261,10 @@ export const useStore = create<AppState>()((set) => ({
 
   setMatrix(matrix) {
     set({ matrix });
-    void api.saveMatrix(matrix).catch(err => {
-      console.error('AutoBrowse: failed to save matrix —', err);
-      set({ persistenceError: persistFailure(err) });
-    });
+    persist(api.saveMatrix(matrix), 'save matrix');
   },
 
   clearPersistenceError() {
     set({ persistenceError: '' });
   },
-
 }));

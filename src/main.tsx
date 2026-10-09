@@ -5,12 +5,15 @@ import './styles/tokens.css';
 import './styles/global.css';
 import App from './App';
 import AuthGate from './features/AuthGate';
+import ErrorBoundary from './features/ErrorBoundary';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
       <AuthGate>
-        <App />
+        <ErrorBoundary>
+          <App />
+        </ErrorBoundary>
       </AuthGate>
     </BrowserRouter>
   </StrictMode>,

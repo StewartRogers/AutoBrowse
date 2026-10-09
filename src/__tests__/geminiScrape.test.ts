@@ -115,6 +115,19 @@ describe('scrapeVehicleFromUrl', () => {
     }
   });
 
+  it('drops mistyped or out-of-range values instead of storing them', async () => {
+    geminiReturns({
+      make: { evil: 1 }, model: 'EV9', year: 'soon', trim: ['x'],
+      powertrain: 'diesel', bodyStyle: 'Spaceship', condition: 'Mint',
+      color: 'x'.repeat(500), photoUrl: 'javascript:alert(1)',
+      specs: { engine: { a: 1 }, horsepower: 'lots', seating: 7 },
+    });
+    const result = await scrapeVehicleFromUrl('https://example.com');
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data).toEqual({ model: 'EV9', color: 'x'.repeat(200), specs: { seating: 7 } });
+  });
+
   it('returns error when Gemini response contains no JSON', async () => {
     geminiReturnsText('Sorry, I cannot find data for that URL.');
     const result = await scrapeVehicleFromUrl('https://example.com');
@@ -206,6 +219,13 @@ describe('lookupVehicleSpecs', () => {
     const result = await lookupVehicleSpecs(2024, 'Toyota', 'RAV4', 'XLE');
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.data.photoUrl).toBe('https://cdn.example.com/rav4.jpg');
+  });
+
+  it('drops unknown powertrain/bodyStyle values and non-http photo URLs', async () => {
+    geminiReturns({ powertrain: 'steam', bodyStyle: 'Blimp', photoUrl: 'data:text/html,hi', specs: {} });
+    const result = await lookupVehicleSpecs(2024, 'Kia', 'EV9', '');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toEqual({ specs: {} });
   });
 
   it('returns error when Gemini response has no JSON', async () => {

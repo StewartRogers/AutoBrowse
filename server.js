@@ -6,11 +6,10 @@
 
 import express from 'express';
 import { fileURLToPath } from 'url';
-import dns from 'node:dns/promises';
-import net from 'node:net';
 import { GoogleGenAI } from '@google/genai';
 import { db, isLocalFile, initSchema } from './db.js';
 import { installAuthRoutes, requireAuth } from './auth.js';
+import { MAX_HTML_BYTES, TooLargeError, fetchPublicHtml, readBodyCapped, parseListingHtml } from './scrape.js';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,6 +21,9 @@ function logTag(tag, msg) {
   console.log(`[${new Date().toISOString()}] [${tag}] ${msg}`);
 }
 const since = (t0) => `${Date.now() - t0}ms`;
+
+const errorMessage = (err) => (err instanceof Error ? err.message : String(err));
+const sendError = (res, err, status = 500) => res.status(status).json({ ok: false, error: errorMessage(err) });
 
 // Body parsing that works both as a standalone server and as a Vercel function.
 // Vercel's Node runtime may have already parsed the JSON body (consuming the
@@ -44,7 +46,7 @@ app.use(async (req, res, next) => {
     await schemaReady;
     next();
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -59,13 +61,15 @@ app.use('/api', requireAuth);
 
 // ─── Vehicle endpoints ──────────────────────────────────────────────────────
 
+const UPSERT_VEHICLE = 'INSERT OR REPLACE INTO vehicles (id, data, updated_at) VALUES (?, ?, unixepoch())';
+
 // GET /api/vehicles — return all vehicles ordered by createdAt desc
 app.get('/api/vehicles', async (req, res) => {
   try {
     const result = await db.execute("SELECT data FROM vehicles ORDER BY json_extract(data, '$.createdAt') DESC");
     res.json({ ok: true, vehicles: result.rows.map(r => JSON.parse(r.data)) });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -75,12 +79,12 @@ app.post('/api/vehicles', async (req, res) => {
     const v = req.body;
     if (!v?.id) return res.status(400).json({ ok: false, error: 'Missing id.' });
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO vehicles (id, data, updated_at) VALUES (?, ?, unixepoch())',
+      sql: UPSERT_VEHICLE,
       args: [v.id, JSON.stringify(v)],
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -89,12 +93,12 @@ app.put('/api/vehicles/:id', async (req, res) => {
   try {
     const v = { ...req.body, id: req.params.id };
     await db.execute({
-      sql: 'INSERT OR REPLACE INTO vehicles (id, data, updated_at) VALUES (?, ?, unixepoch())',
+      sql: UPSERT_VEHICLE,
       args: [req.params.id, JSON.stringify(v)],
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -104,7 +108,7 @@ app.delete('/api/vehicles/:id', async (req, res) => {
     await db.execute({ sql: 'DELETE FROM vehicles WHERE id = ?', args: [req.params.id] });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -117,7 +121,7 @@ app.get('/api/matrix', async (req, res) => {
     const row = result.rows[0];
     res.json({ ok: true, matrix: row ? JSON.parse(row.data) : null });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -131,7 +135,7 @@ app.put('/api/matrix', async (req, res) => {
     });
     res.json({ ok: true });
   } catch (err) {
-    res.status(500).json({ ok: false, error: String(err.message) });
+    sendError(res, err);
   }
 });
 
@@ -179,7 +183,7 @@ app.post('/api/gemini', async (req, res) => {
       return res.status(504).json({ ok: false, error: `Gemini request timed out after ${GEMINI_TIMEOUT_MS / 1000}s.` });
     }
     // Pass Gemini's error message through; the client formats it for display.
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = errorMessage(err);
     logTag('gemini', `✗ error in ${since(t0)}: ${msg.slice(0, 200)}`);
     return res.status(502).json({ ok: false, error: msg });
   } finally {
@@ -188,112 +192,7 @@ app.post('/api/gemini', async (req, res) => {
 });
 
 // ─── HTML scrape endpoint ───────────────────────────────────────────────────
-
-function extractMeta(html, name) {
-  const patterns = [
-    new RegExp(`<meta[^>]+property=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'),
-    new RegExp(`<meta[^>]+name=["']${name}["'][^>]+content=["']([^"']+)["']`, 'i'),
-  ];
-  for (const pattern of patterns) {
-    const match = html.match(pattern);
-    if (match?.[1]) return match[1].trim();
-  }
-  return '';
-}
-
-function extractTag(html, tag) {
-  const match = html.match(new RegExp(`<${tag}[^>]*>([^<]+)<\\/${tag}>`, 'i'));
-  return match?.[1]?.trim() || '';
-}
-
-function parseYear(value) {
-  const match = value.match(/\b(19|20)\d{2}\b/);
-  return match ? Number(match[0]) : undefined;
-}
-
-function parsePrice(value) {
-  const match = value.replace(/,/g, '').match(/(?:CA\$|\$)\s*([\d.]+)/i);
-  return match ? Number(match[1]) : undefined;
-}
-
-function isPrivateIPv4(ip) {
-  const parts = ip.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(n => !Number.isInteger(n) || n < 0 || n > 255)) return true;
-  const [a, b] = parts;
-  return (
-    a === 0 ||
-    a === 10 ||
-    a === 127 ||
-    (a === 100 && b >= 64 && b <= 127) ||
-    (a === 169 && b === 254) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 192 && b === 168) ||
-    (a === 192 && b === 0) ||
-    (a === 198 && (b === 18 || b === 19)) ||
-    a >= 224
-  );
-}
-
-function isPrivateIPv6(ip) {
-  const value = ip.toLowerCase();
-  const mapped = value.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mapped) return isPrivateIPv4(mapped[1]);
-  return (
-    value === '::' ||
-    value === '::1' ||
-    value.startsWith('fc') ||
-    value.startsWith('fd') ||
-    value.startsWith('fe80:')
-  );
-}
-
-function isPrivateAddress(address, family) {
-  if (family === 4) return isPrivateIPv4(address);
-  if (family === 6) return isPrivateIPv6(address);
-  return true;
-}
-
-async function validatePublicHttpUrl(rawUrl) {
-  let parsed;
-  try {
-    parsed = new URL(rawUrl);
-  } catch {
-    throw new Error('URL is not valid.');
-  }
-  if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Only http and https URLs can be scraped.');
-  }
-  if (!parsed.hostname || parsed.username || parsed.password) {
-    throw new Error('URL must include a plain public hostname.');
-  }
-  const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
-  if (host === 'localhost' || host.endsWith('.localhost')) {
-    throw new Error('Localhost URLs cannot be scraped.');
-  }
-
-  const literalFamily = net.isIP(host);
-  const addresses = literalFamily
-    ? [{ address: host, family: literalFamily }]
-    : await dns.lookup(host, { all: true, verbatim: true });
-
-  if (!addresses.length || addresses.some(a => isPrivateAddress(a.address, a.family))) {
-    throw new Error('Only public internet hosts can be scraped.');
-  }
-  return parsed;
-}
-
-async function fetchPublicHtml(rawUrl, options, maxRedirects = 3) {
-  let url = await validatePublicHttpUrl(rawUrl);
-  for (let i = 0; i <= maxRedirects; i += 1) {
-    const response = await fetch(url, { ...options, redirect: 'manual' });
-    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
-
-    const location = response.headers.get('location');
-    if (!location) return response;
-    url = await validatePublicHttpUrl(new URL(location, url).toString());
-  }
-  throw new Error('Too many redirects while scraping.');
-}
+// Fetching and parsing live in scrape.js (SSRF guard, body cap, ReDoS-safe parser).
 
 app.get('/api/scrape-html', async (req, res) => {
   try {
@@ -302,64 +201,36 @@ app.get('/api/scrape-html', async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Missing url query parameter.' });
     }
 
-    const MAX_HTML_BYTES = 5 * 1024 * 1024;
     const response = await fetchPublicHtml(url, {
       headers: {
         'user-agent': 'AutoBrowse/1.0',
         accept: 'text/html,application/xhtml+xml',
+        'accept-encoding': 'gzip, deflate, br',
       },
       signal: AbortSignal.timeout(15000),
     });
 
-    if (!response.ok) {
-      return res.status(502).json({ ok: false, error: `Upstream request failed (${response.status} ${response.statusText}).` });
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      response.resume();
+      return res.status(502).json({ ok: false, error: `Upstream request failed (${response.statusCode} ${response.statusMessage}).` });
     }
 
-    const contentLength = Number(response.headers.get('content-length') || 0);
+    const contentLength = Number(response.headers['content-length'] || 0);
     if (contentLength > MAX_HTML_BYTES) {
+      response.destroy();
       return res.status(502).json({ ok: false, error: `Response too large (${(contentLength / 1024 / 1024).toFixed(1)} MB).` });
     }
 
-    const htmlBuffer = await response.arrayBuffer();
-    if (htmlBuffer.byteLength > MAX_HTML_BYTES) {
-      return res.status(502).json({ ok: false, error: `Response too large (${(htmlBuffer.byteLength / 1024 / 1024).toFixed(1)} MB).` });
+    let html;
+    try {
+      html = await readBodyCapped(response, MAX_HTML_BYTES);
+    } catch (err) {
+      if (err instanceof TooLargeError) return sendError(res, err, 502);
+      throw err;
     }
-    const html = new TextDecoder().decode(htmlBuffer);
-    const title = extractMeta(html, 'og:title') || extractTag(html, 'title');
-    const description = extractMeta(html, 'description') || extractMeta(html, 'og:description');
-    const image = extractMeta(html, 'og:image') || extractMeta(html, 'twitter:image');
-
-    const data = {};
-    const seed = `${title} ${description}`.trim();
-    if (title) {
-      const year = parseYear(title);
-      if (year) data.year = year;
-      const cleaned = title.split(' - ')[0].split('|')[0].replace(/\b(19|20)\d{2}\b/, '').trim();
-      const parts = cleaned.split(/\s+/).filter(Boolean);
-      if (parts.length >= 2) {
-        data.make = parts[0];
-        data.model = parts[1];
-        if (parts.length > 2) data.trim = parts.slice(2).join(' ');
-      }
-    }
-    if (seed.toLowerCase().includes('suv')) data.bodyStyle = 'SUV';
-    else if (seed.toLowerCase().includes('sedan')) data.bodyStyle = 'Sedan';
-    else if (seed.toLowerCase().includes('truck')) data.bodyStyle = 'Truck';
-    if (description) {
-      const dealerMatch = description.match(/dealer(?:ship)?[:\s-]+([^.|]+)/i);
-      if (dealerMatch) data.dealer = dealerMatch[1].trim();
-      const colorMatch = description.match(/color[:\s-]+([^.|]+)/i);
-      if (colorMatch) data.color = colorMatch[1].trim();
-      const price = parsePrice(description);
-      // Selling price is derived (msrp − discount); the scraped price is the msrp.
-      // Fees are an itemized array now (none scraped here).
-      if (price) data.pricing = { msrp: price, discount: 0, incentives: 0, fees: [], tradeValue: 0, taxRate: 0 };
-    }
-    if (image) data.photoUrl = image;
-
-    return res.json({ ok: true, data });
+    return res.json({ ok: true, data: parseListingHtml(html) });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    return sendError(res, err);
   }
 });
 
@@ -424,8 +295,8 @@ app.get('/api/wiki-photo', async (req, res) => {
     logTag('wiki-photo', `✗ no photo found (total ${since(t0)})`);
     return res.json({ ok: false, error: 'No Wikipedia photo found.' });
   } catch (err) {
-    logTag('wiki-photo', `✗ error in ${since(t0)}: ${err instanceof Error ? err.message : String(err)}`);
-    return res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+    logTag('wiki-photo', `✗ error in ${since(t0)}: ${errorMessage(err)}`);
+    return sendError(res, err);
   }
 });
 

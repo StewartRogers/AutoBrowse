@@ -1,5 +1,4 @@
-import { makeFee, type Vehicle, type Features } from './data';
-
+import { makeFee, POWERTRAINS, BODY_STYLES, type Vehicle, type Features, type Condition, type Powertrain } from './data';
 
 const EXTRACT_PROMPT = `You are a car data expert. Given a URL, identify the vehicle and return its details
 using your training knowledge of that model. The URL may be a manufacturer model page or a dealer listing.
@@ -189,42 +188,19 @@ export async function lookupVehicleSpecs(
   if (!res.ok) return { ok: false, error: res.error };
 
   try {
-    const text = res.text;
-    const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { ok: false, error: 'No specs returned. Try entering make/model/year/trim more specifically.' };
+    const raw = extractJson(res.text);
+    if (!raw) return { ok: false, error: 'No specs returned. Try entering make/model/year/trim more specifically.' };
 
-    const raw = JSON.parse(jsonMatch[0]);
     const result: Extract<SpecsLookupResult, { ok: true }>['data'] = { specs: {} };
 
-    if (raw.powertrain) result.powertrain = raw.powertrain;
-    if (raw.bodyStyle)  result.bodyStyle  = raw.bodyStyle;
-    if (raw.photoUrl)   result.photoUrl   = raw.photoUrl;
+    const powertrain = oneOf(raw.powertrain, POWERTRAIN_KEYS);
+    const bodyStyle  = oneOf(raw.bodyStyle, BODY_STYLES);
+    const photoUrl   = httpUrl(raw.photoUrl);
+    if (powertrain) result.powertrain = powertrain;
+    if (bodyStyle)  result.bodyStyle  = bodyStyle;
+    if (photoUrl)   result.photoUrl   = photoUrl;
 
-    if (raw.specs) {
-      const s = raw.specs;
-      if (s.engine)             result.specs.engine             = s.engine;
-      if (s.horsepower)         result.specs.horsepower         = Number(s.horsepower);
-      if (s.torque)             result.specs.torque             = Number(s.torque);
-      if (s.transmission)       result.specs.transmission       = s.transmission;
-      if (s.drivetrain)         result.specs.drivetrain         = s.drivetrain;
-      if (s.fuelL100km)         result.specs.fuelL100km         = Number(s.fuelL100km);
-      if (s.fuelL100kmCity)     result.specs.fuelL100kmCity     = Number(s.fuelL100kmCity);
-      if (s.fuelL100kmHwy)      result.specs.fuelL100kmHwy      = Number(s.fuelL100kmHwy);
-      if (s.mpge)               result.specs.mpge               = Number(s.mpge);
-      if (s.evRange)            result.specs.evRange            = Number(s.evRange);
-      if (s.batteryKwh)         result.specs.batteryKwh         = Number(s.batteryKwh);
-      if (s.chargeTimeLvl2Hr)   result.specs.chargeTimeLvl2Hr   = Number(s.chargeTimeLvl2Hr);
-      if (s.chargeTimeDCMins)   result.specs.chargeTimeDCMins   = Number(s.chargeTimeDCMins);
-      if (s.seating)            result.specs.seating            = Number(s.seating);
-      if (s.cargoL)             result.specs.cargoL             = Number(s.cargoL);
-      if (s.cargoLSeatsDown)    result.specs.cargoLSeatsDown    = Number(s.cargoLSeatsDown);
-      if (s.towingKg)           result.specs.towingKg           = Number(s.towingKg);
-      if (s.lengthCm)           result.specs.lengthCm           = Number(s.lengthCm);
-      if (s.legroomFront)       result.specs.legroomFront       = Number(s.legroomFront);
-      if (s.legroomRear)        result.specs.legroomRear        = Number(s.legroomRear);
-      if (s.rearHeadroomCm)     result.specs.rearHeadroomCm     = Number(s.rearHeadroomCm);
-      if (s.groundClear)        result.specs.groundClear        = Number(s.groundClear);
-    }
+    if (raw.specs) result.specs = parseSpecs(raw.specs);
 
     if (raw.features) {
       result.features = parseFeatures(raw.features);
@@ -290,24 +266,29 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
   if (!res.ok) return { ok: false, error: res.error };
 
   try {
-    const text = res.text;
-    const jsonMatch = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
-    if (!jsonMatch) return { ok: false, error: 'Gemini returned no JSON. The listing page may block scrapers.' };
+    const raw = extractJson(res.text);
+    if (!raw) return { ok: false, error: 'Gemini returned no JSON. The listing page may block scrapers.' };
 
-    const raw = JSON.parse(jsonMatch[0]);
     const data: Partial<Vehicle> & { specs?: Partial<Vehicle['specs']> } = {};
 
-    if (raw.make)       data.make       = raw.make;
-    if (raw.model)      data.model      = raw.model;
-    if (raw.year)       data.year       = Number(raw.year);
-    if (raw.trim)       data.trim       = raw.trim;
-    if (raw.powertrain) data.powertrain = raw.powertrain;
-    if (raw.bodyStyle)  data.bodyStyle  = raw.bodyStyle;
-    if (raw.condition)  data.condition  = raw.condition;
-    if (raw.mileage)    data.mileage    = Number(raw.mileage);
-    if (raw.color)      data.color      = raw.color;
-    if (raw.dealer)     data.dealer     = raw.dealer;
-    if (raw.photoUrl)   data.photoUrl   = raw.photoUrl;
+    // The model's reply is untrusted (the URL it read may be attacker-controlled):
+    // keep only well-typed values so a bad field can't break rendering later.
+    const fields = {
+      make:       text(raw.make),
+      model:      text(raw.model),
+      year:       num(raw.year),
+      trim:       text(raw.trim),
+      powertrain: oneOf(raw.powertrain, POWERTRAIN_KEYS),
+      bodyStyle:  oneOf(raw.bodyStyle, BODY_STYLES),
+      condition:  oneOf(raw.condition, CONDITIONS),
+      mileage:    num(raw.mileage),
+      color:      text(raw.color),
+      dealer:     text(raw.dealer),
+      photoUrl:   httpUrl(raw.photoUrl),
+    };
+    for (const [k, v] of Object.entries(fields)) {
+      if (v) Object.assign(data, { [k]: v });
+    }
 
     if (raw.pricing) {
       const pr = raw.pricing;
@@ -359,31 +340,7 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
       }
     }
 
-    if (raw.specs) {
-      data.specs = {};
-      const s = raw.specs;
-      if (s.engine)             data.specs.engine             = s.engine;
-      if (s.horsepower)         data.specs.horsepower         = Number(s.horsepower);
-      if (s.torque)             data.specs.torque             = Number(s.torque);
-      if (s.transmission)       data.specs.transmission       = s.transmission;
-      if (s.drivetrain)         data.specs.drivetrain         = s.drivetrain;
-      if (s.fuelL100km)         data.specs.fuelL100km         = Number(s.fuelL100km);
-      if (s.fuelL100kmCity)     data.specs.fuelL100kmCity     = Number(s.fuelL100kmCity);
-      if (s.fuelL100kmHwy)      data.specs.fuelL100kmHwy      = Number(s.fuelL100kmHwy);
-      if (s.mpge)               data.specs.mpge               = Number(s.mpge);
-      if (s.evRange)            data.specs.evRange            = Number(s.evRange);
-      if (s.batteryKwh)         data.specs.batteryKwh         = Number(s.batteryKwh);
-      if (s.chargeTimeLvl2Hr)   data.specs.chargeTimeLvl2Hr   = Number(s.chargeTimeLvl2Hr);
-      if (s.chargeTimeDCMins)   data.specs.chargeTimeDCMins   = Number(s.chargeTimeDCMins);
-      if (s.seating)            data.specs.seating            = Number(s.seating);
-      if (s.cargoL)             data.specs.cargoL             = Number(s.cargoL);
-      if (s.towingKg)           data.specs.towingKg           = Number(s.towingKg);
-      if (s.lengthCm)           data.specs.lengthCm           = Number(s.lengthCm);
-      if (s.legroomFront)       data.specs.legroomFront       = Number(s.legroomFront);
-      if (s.legroomRear)        data.specs.legroomRear        = Number(s.legroomRear);
-      if (s.rearHeadroomCm)     data.specs.rearHeadroomCm     = Number(s.rearHeadroomCm);
-      if (s.groundClear)        data.specs.groundClear        = Number(s.groundClear);
-    }
+    if (raw.specs) data.specs = parseSpecs(raw.specs);
 
     if (raw.features) {
       data.features = parseFeatures(raw.features);
@@ -396,6 +353,64 @@ export async function scrapeVehicleFromUrl(url: string): Promise<ScrapeResult> {
   }
 }
 
+// ─── Value guards for model output ──────────────────────────────────────────
+
+const MAX_TEXT_CHARS = 200;
+const POWERTRAIN_KEYS = Object.keys(POWERTRAINS) as Powertrain[];
+const CONDITIONS: readonly Condition[] = ['New', 'Used', 'CPO'];
+
+function text(v: unknown): string | undefined {
+  return typeof v === 'string' && v.trim() ? v.trim().slice(0, MAX_TEXT_CHARS) : undefined;
+}
+
+function num(v: unknown): number | undefined {
+  if (typeof v !== 'number' && typeof v !== 'string') return undefined;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | undefined {
+  return (allowed as readonly unknown[]).includes(v) ? v as T : undefined;
+}
+
+function httpUrl(v: unknown): string | undefined {
+  if (typeof v !== 'string' || v.length > 2048) return undefined;
+  try {
+    return ['http:', 'https:'].includes(new URL(v).protocol) ? v : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// Pulls the first {...} object out of a model reply (tolerating ```json fences).
+// Returns null when there is none; throws if the object is not valid JSON.
+function extractJson(text: string) {
+  const match = text.replace(/```json|```/g, '').match(/\{[\s\S]*\}/);
+  return match ? JSON.parse(match[0]) : null;
+}
+
+const TEXT_SPEC_KEYS = ['engine', 'transmission', 'drivetrain'] as const;
+const NUMERIC_SPEC_KEYS = [
+  'horsepower', 'torque', 'fuelL100km', 'fuelL100kmCity', 'fuelL100kmHwy', 'mpge',
+  'evRange', 'batteryKwh', 'chargeTimeLvl2Hr', 'chargeTimeDCMins', 'seating', 'cargoL',
+  'cargoLSeatsDown', 'towingKg', 'lengthCm', 'legroomFront', 'legroomRear',
+  'rearHeadroomCm', 'groundClear',
+] as const;
+
+// Copies the spec fields the model actually filled in (falsy values are omitted).
+function parseSpecs(s: Record<string, unknown>): Partial<Vehicle['specs']> {
+  const out: Record<string, unknown> = {};
+  for (const k of TEXT_SPEC_KEYS) { const v = text(s[k]); if (v) out[k] = v; }
+  for (const k of NUMERIC_SPEC_KEYS) { const v = num(s[k]); if (v) out[k] = v; }
+  return out as Partial<Vehicle['specs']>;
+}
+
+const BOOLEAN_FEATURE_KEYS = [
+  'heatedSteeringWheel', 'sunroof', 'thirdRow', 'rearClimateControls', 'rearVents',
+  'frontWirelessCharging', 'frontPluginCharging', 'rearWirelessCharging',
+  'rearPluginCharging', 'blindspotMonitor', 'backupCamera', 'powerFoldingMirrors', 'roofRack',
+] as const;
+
 function parseFeatures(f: Record<string, unknown>): Partial<Features> {
   const out: Partial<Features> = {};
   const bool = (v: unknown) => v === true || v === 'true';
@@ -403,21 +418,9 @@ function parseFeatures(f: Record<string, unknown>): Partial<Features> {
 
   if (f.heatedSeats !== undefined)         out.heatedSeats         = (f.heatedSeats === 'front' || f.heatedSeats === 'front+rear') ? f.heatedSeats : null;
   if (f.cooledSeats !== undefined)         out.cooledSeats         = (f.cooledSeats === 'front' || f.cooledSeats === 'front+rear') ? f.cooledSeats : null;
-  if (f.heatedSteeringWheel !== undefined) out.heatedSteeringWheel = boolDef(f.heatedSteeringWheel);
   if (f.powerSeats !== undefined)          out.powerSeats          = (f.powerSeats === 'driver' || f.powerSeats === 'both') ? f.powerSeats : null;
   if (f.interiorMaterial !== undefined)    out.interiorMaterial    = (['cloth', 'leatherette', 'leather'] as const).includes(f.interiorMaterial as 'cloth') ? f.interiorMaterial as Features['interiorMaterial'] : null;
-  if (f.sunroof !== undefined)             out.sunroof             = boolDef(f.sunroof);
-  if (f.thirdRow !== undefined)            out.thirdRow            = boolDef(f.thirdRow);
-  if (f.rearClimateControls !== undefined) out.rearClimateControls = boolDef(f.rearClimateControls);
-  if (f.rearVents !== undefined)           out.rearVents           = boolDef(f.rearVents);
-  if (f.frontWirelessCharging !== undefined) out.frontWirelessCharging = boolDef(f.frontWirelessCharging);
-  if (f.frontPluginCharging !== undefined) out.frontPluginCharging = boolDef(f.frontPluginCharging);
-  if (f.rearWirelessCharging !== undefined) out.rearWirelessCharging = boolDef(f.rearWirelessCharging);
-  if (f.rearPluginCharging !== undefined)  out.rearPluginCharging  = boolDef(f.rearPluginCharging);
-  if (f.blindspotMonitor !== undefined)    out.blindspotMonitor    = boolDef(f.blindspotMonitor);
-  if (f.backupCamera !== undefined)        out.backupCamera        = boolDef(f.backupCamera);
-  if (f.powerFoldingMirrors !== undefined) out.powerFoldingMirrors = boolDef(f.powerFoldingMirrors);
-  if (f.roofRack !== undefined)            out.roofRack            = boolDef(f.roofRack);
+  for (const k of BOOLEAN_FEATURE_KEYS) if (f[k] !== undefined) out[k] = boolDef(f[k]);
   return out;
 }
 

@@ -8,7 +8,8 @@ interface Props {
 }
 
 export default function PowertrainBadge({ powertrain, size = 'md' }: Props) {
-  const pt = POWERTRAINS[powertrain];
+  // Tolerate unknown values from older/imported records instead of crashing.
+  const pt = POWERTRAINS[powertrain] ?? { label: String(powertrain || 'Unknown'), color: 'var(--ink-soft)', tint: 'transparent' };
   return (
     <span
       className={`${styles.badge} ${styles[size]}`}
