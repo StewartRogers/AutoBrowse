@@ -9,6 +9,7 @@ const INITIAL_STATE = {
   compareIds: [],
   hydrated: false,
   matrix: DEFAULT_MATRIX,
+  loadError: '',
   persistenceError: '',
 };
 
@@ -295,13 +296,40 @@ describe('init', () => {
     expect(useStore.getState().compareIds).toContain('active2');
   });
 
-  it('marks hydrated even when the API call fails', async () => {
+  it('sets loadError (not hydrated) when the API call fails', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
     await useStore.getState().init();
     const state = useStore.getState();
-    expect(state.hydrated).toBe(true);
-    expect(state.vehicles).toHaveLength(0);
-    expect(state.persistenceError).toBe('Network error');
+    expect(state.hydrated).toBe(false);
+    expect(state.loadError).toBe('Network error');
+  });
+
+  it('fails the whole load if only the matrix request fails', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (url: string) => (url.includes('/api/matrix')
+      ? { ok: false, status: 500, json: async () => ({ ok: false, error: 'Internal server error.' }) }
+      : { ok: true, json: async () => ({ ok: true, vehicles: [] }) })));
+    await useStore.getState().init();
+    expect(useStore.getState().hydrated).toBe(false);
+    expect(useStore.getState().loadError).toBe('Internal server error.');
+  });
+
+  it('blocks writes after a failed load so defaults never overwrite saved data', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('Network error')));
+    await useStore.getState().init();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    useStore.getState().setMatrix([{ metric: 'price', weight: 100 }]);
+    useStore.getState().addVehicle({ make: 'Toyota' });
+    await flushPendingSaves();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('clears loadError after a successful load', async () => {
+    useStore.setState({ loadError: 'earlier failure' });
+    mockFetch((url: string) => (url.includes('/api/vehicles') ? { ok: true, vehicles: [] } : { ok: true, matrix: null }));
+    await useStore.getState().init();
+    expect(useStore.getState().loadError).toBe('');
+    expect(useStore.getState().hydrated).toBe(true);
   });
 });
 

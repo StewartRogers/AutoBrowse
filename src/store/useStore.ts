@@ -109,8 +109,14 @@ function reportFailure(err: unknown, action: string): void {
   useStore.setState({ persistenceError: persistFailure(err) });
 }
 
+// If the initial load failed, local state is just empty defaults; writing it
+// would overwrite the user's real data (e.g. DEFAULT_MATRIX over their matrix).
+// App blocks the UI in that state; this is the store-level backstop.
+const writesBlocked = () => Boolean(useStore.getState().loadError);
+
 // Starts `job` once every earlier request in the lane has settled.
 function enqueue(key: string, job: Job): void {
+  if (writesBlocked()) return;
   const lane = getLane(key);
   lane.tail = lane.tail.then(job.run).catch(err => reportFailure(err, job.action));
 }
@@ -127,6 +133,7 @@ function flushLane(key: string): void {
 }
 
 function scheduleSave(key: string, job: Job): void {
+  if (writesBlocked()) return;
   const lane = getLane(key);
   lane.pending = job; // a newer snapshot replaces the waiting one
   if (lane.timer) clearTimeout(lane.timer);
@@ -175,6 +182,7 @@ export interface AppState {
   matrix: MatrixFactor[];
   compareIds: string[];
   hydrated: boolean;
+  loadError: string; // set when init() failed; the app must not render or write
   persistenceError: string;
 
   // Lifecycle
@@ -206,6 +214,7 @@ export const useStore = create<AppState>()((set) => ({
   matrix: DEFAULT_MATRIX,
   compareIds: [],
   hydrated: false,
+  loadError: '',
   persistenceError: '',
 
   async init() {
@@ -226,11 +235,13 @@ export const useStore = create<AppState>()((set) => ({
         matrix: finalMatrix,
         compareIds: defaultCompare,
         hydrated: true,
+        loadError: '',
       });
     } catch (err) {
       console.error('AutoBrowse: failed to load from API —', err);
-      // Still mark hydrated so the app renders; will be empty
-      set({ hydrated: true, persistenceError: persistFailure(err) });
+      // Don't render an empty, editable app: the first edit would save empty
+      // defaults over the user's real data. App shows a retry screen instead.
+      set({ hydrated: false, loadError: persistFailure(err) });
     }
   },
 

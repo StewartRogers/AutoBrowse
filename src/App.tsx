@@ -14,6 +14,7 @@ export default function App() {
   const replaceVehicle = useStore(s => s.replaceVehicle);
   const init = useStore(s => s.init);
   const hydrated = useStore(s => s.hydrated);
+  const loadError = useStore(s => s.loadError);
 
   useEffect(() => { init(); }, [init]);
   const [formOpen, setFormOpen] = useState(false);
@@ -29,9 +30,25 @@ export default function App() {
     closeForm();
   };
 
+  const centered = { display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, color: 'var(--ink-soft)', fontFamily: 'var(--sans)', padding: '0 16px', textAlign: 'center' } as const;
+
+  // A failed load must not fall through to the app: it would show an empty garage
+  // and default matrix, and the first edit would save those over the real data.
+  // Reload (not just init()) so an expired session goes back through AuthGate.
+  if (loadError) {
+    return (
+      <div style={centered}>
+        <div style={{ fontSize: 28 }}>🚗</div>
+        <div style={{ fontSize: 16, color: 'var(--ink)' }}>Couldn't load your garage</div>
+        <div style={{ fontSize: 13, maxWidth: 420 }}>{loadError}</div>
+        <button className="btn btn-primary" onClick={() => window.location.reload()}>Try again</button>
+      </div>
+    );
+  }
+
   if (!hydrated) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', flexDirection: 'column', gap: 12, color: 'var(--ink-soft)', fontFamily: 'var(--sans)' }}>
+      <div style={centered}>
         <div style={{ fontSize: 28 }}>🚗</div>
         <div style={{ fontSize: 14 }}>Loading garage…</div>
       </div>
