@@ -142,10 +142,11 @@ app.put('/api/matrix', async (req, res) => {
 // ─── Gemini proxy ─────────────────────────────────────────────────────────────
 // Keeps the Gemini API key server-side. The browser POSTs a prompt here and the
 // server forwards it to Gemini with the secret key, so the key is never shipped in
-// the client bundle. Reads GEMINI_API_KEY (preferred) or legacy VITE_GEMINI_API_KEY.
+// the client bundle. Reads GEMINI_API_KEY only — never a VITE_-prefixed name, which
+// Vite would inline into the bundle if client code ever referenced it.
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || process.env.VITE_GEMINI_MODEL || 'gemini-3.1-flash-lite';
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 
 // Give up on a hung Gemini call so the request doesn't hang forever. Kept just
 // under the client's 30s abort (geminiScrape.ts) so the server can return a clean
