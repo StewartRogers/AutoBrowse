@@ -622,3 +622,44 @@ describe('deepMerge', () => {
     expect(result.a.x).toBe(2);
   });
 });
+
+// ─── review fixes: deepMerge clearing, matrix edge cases ────────────────────
+
+describe('deepMerge (clearing and unsafe keys)', () => {
+  it('deletes a key the patch sets to undefined (clearing a spec)', () => {
+    const base = { specs: { horsepower: 204, torque: 335 } as { horsepower?: number; torque?: number } };
+    const result = deepMerge(base, { specs: { ...base.specs, horsepower: undefined } });
+    expect(result.specs).toEqual({ torque: 335 });
+    expect('horsepower' in result.specs).toBe(false);
+  });
+
+  it('ignores __proto__ keys from parsed JSON', () => {
+    const patch = JSON.parse('{"__proto__": {"polluted": true}, "a": 2}');
+    const result = deepMerge({ a: 1 } as Record<string, unknown>, patch);
+    expect(result.a).toBe(2);
+    expect((result as Record<string, unknown>).polluted).toBeUndefined();
+    expect(({} as Record<string, unknown>).polluted).toBeUndefined();
+  });
+});
+
+describe('matrixScores edge cases', () => {
+  const priced = (msrp: number) => {
+    const v = makeVehicle();
+    return { ...v, pricing: { ...v.pricing, msrp, discount: 0 } };
+  };
+
+  it('a vehicle with no price earns no price points instead of winning', () => {
+    const [unpriced, cheap, pricey] = [priced(0), priced(30000), priced(50000)];
+    const results = matrixScores([unpriced, cheap, pricey], [{ metric: 'price', weight: 100 }]);
+    const by = (id: string) => results.find(r => r.vehicle.id === id)!;
+    expect(by(unpriced.id).score).toBe(0);
+    expect(by(cheap.id).score).toBeCloseTo(100);
+    expect(by(pricey.id).score).toBeCloseTo(0);
+  });
+
+  it('tied values get full points regardless of direction', () => {
+    const results = matrixScores([priced(40000)], [{ metric: 'price', weight: 50 }, { metric: 'comfort', weight: 50 }]);
+    expect(results[0].breakdown.price.norm).toBe(1);
+    expect(results[0].breakdown.comfort.norm).toBe(1);
+  });
+});

@@ -763,13 +763,17 @@ export function matrixScores(vehicles: Vehicle[], factors: MatrixFactor[]): Matr
   const active = vehicles.filter(v => !v.archived);
   const totalW = factors.reduce((a, f) => a + (f.weight || 0), 0) || 1;
 
-  // pre-compute min/max per factor across active vehicles
+  // For 'low' (cost) metrics a value ≤ 0 means no pricing was entered, not "free":
+  // it is left out of the range and earns no points instead of winning outright.
+  const hasData = (m: MetricDef, raw: number) => Number.isFinite(raw) && (m.dir === 'high' || raw > 0);
+
+  // pre-compute min/max per factor across active vehicles (with data)
   const ranges: Record<string, { min: number; max: number }> = {};
   factors.forEach(f => {
     const m = MATRIX_METRICS[f.metric];
     if (!m) return;
-    const vals = active.map(v => m.fn(v));
-    ranges[f.metric] = { min: Math.min(...vals), max: Math.max(...vals) };
+    const vals = active.map(v => m.fn(v)).filter(raw => hasData(m, raw));
+    ranges[f.metric] = vals.length ? { min: Math.min(...vals), max: Math.max(...vals) } : { min: 0, max: 0 };
   });
 
   return active
@@ -781,9 +785,13 @@ export function matrixScores(vehicles: Vehicle[], factors: MatrixFactor[]): Matr
         if (!m) return;
         const raw = m.fn(v);
         const { min, max } = ranges[f.metric];
-        const span = (max - min) || 1;
-        let norm = (raw - min) / span; // 0..1, high raw → 1
-        if (m.dir === 'low') norm = 1 - norm;
+        let norm: number;
+        if (!hasData(m, raw)) norm = 0;
+        else if (max === min) norm = 1; // all tied: everyone gets full points, either direction
+        else {
+          norm = (raw - min) / (max - min); // 0..1, high raw → 1
+          if (m.dir === 'low') norm = 1 - norm;
+        }
         const contrib = norm * 100 * ((f.weight || 0) / totalW);
         breakdown[f.metric] = { raw, norm, contrib };
         score += contrib;
@@ -794,9 +802,14 @@ export function matrixScores(vehicles: Vehicle[], factors: MatrixFactor[]): Matr
 }
 
 // ---------- deep merge ----------
+// An own key set to `undefined` in the patch deletes that key (so a cleared spec
+// or feature actually clears). Prototype keys are ignored.
+const UNSAFE_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
 export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
   const out = { ...base } as T;
   for (const k in patch) {
+    if (!Object.prototype.hasOwnProperty.call(patch, k) || UNSAFE_KEYS.has(k)) continue;
     const patchVal = patch[k];
     const baseVal = base[k];
     if (
@@ -808,7 +821,9 @@ export function deepMerge<T extends object>(base: T, patch: Partial<T>): T {
       baseVal !== null
     ) {
       out[k] = deepMerge(baseVal as object, patchVal as object) as T[typeof k];
-    } else if (patchVal !== undefined) {
+    } else if (patchVal === undefined) {
+      delete out[k];
+    } else {
       out[k] = patchVal as T[typeof k];
     }
   }

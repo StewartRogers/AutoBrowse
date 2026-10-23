@@ -96,6 +96,11 @@ export function isPrivateAddress(address, family) {
 
 const NOT_PUBLIC = 'Only public internet hosts can be scraped.';
 
+// A rejection whose message is safe and useful to show the user (bad URL,
+// private host, redirect loop, oversize body). Anything else is an unexpected
+// network/socket error and is reported generically by the server.
+export class ScrapeError extends Error {}
+
 // Syntactic checks plus, for IP literals, the address check. Hostnames are
 // checked when they are resolved (publicLookup), not here.
 export function validatePublicHttpUrl(rawUrl) {
@@ -103,20 +108,20 @@ export function validatePublicHttpUrl(rawUrl) {
   try {
     parsed = new URL(rawUrl);
   } catch {
-    throw new Error('URL is not valid.');
+    throw new ScrapeError('URL is not valid.');
   }
   if (!['http:', 'https:'].includes(parsed.protocol)) {
-    throw new Error('Only http and https URLs can be scraped.');
+    throw new ScrapeError('Only http and https URLs can be scraped.');
   }
   if (!parsed.hostname || parsed.username || parsed.password) {
-    throw new Error('URL must include a plain public hostname.');
+    throw new ScrapeError('URL must include a plain public hostname.');
   }
   const host = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, '');
   if (host === 'localhost' || host.endsWith('.localhost')) {
-    throw new Error('Localhost URLs cannot be scraped.');
+    throw new ScrapeError('Localhost URLs cannot be scraped.');
   }
   const literalFamily = net.isIP(host);
-  if (literalFamily && isPrivateAddress(host, literalFamily)) throw new Error(NOT_PUBLIC);
+  if (literalFamily && isPrivateAddress(host, literalFamily)) throw new ScrapeError(NOT_PUBLIC);
   return parsed;
 }
 
@@ -128,7 +133,7 @@ function publicLookup(hostname, options, callback) {
   dns.lookup(hostname, { all: true, verbatim: true }).then(
     (addresses) => {
       if (!addresses.length || addresses.some(a => isPrivateAddress(a.address, a.family))) {
-        return callback(new Error(NOT_PUBLIC));
+        return callback(new ScrapeError(NOT_PUBLIC));
       }
       if (wantAll) return callback(null, addresses);
       return callback(null, addresses[0].address, addresses[0].family);
@@ -160,7 +165,7 @@ export async function fetchPublicHtml(rawUrl, { headers = {}, signal } = {}) {
     response.resume();
     url = validatePublicHttpUrl(new URL(location, url).toString());
   }
-  throw new Error('Too many redirects while scraping.');
+  throw new ScrapeError('Too many redirects while scraping.');
 }
 
 const DECOMPRESSORS = {
@@ -170,7 +175,7 @@ const DECOMPRESSORS = {
   br: () => zlib.createBrotliDecompress(),
 };
 
-export class TooLargeError extends Error {}
+export class TooLargeError extends ScrapeError {}
 
 // Reads (and decompresses) the body, aborting as soon as it exceeds maxBytes —
 // so neither a huge chunked response nor a compression bomb is held in memory.
@@ -288,6 +293,7 @@ export function parseListingHtml(html) {
     // Fees are an itemized array now (none scraped here).
     if (price) data.pricing = { msrp: price, discount: 0, incentives: 0, fees: [], tradeValue: 0, taxRate: 0 };
   }
-  if (image) data.photoUrl = image;
+  // og:image is page-controlled; only keep absolute http(s) URLs.
+  if (image && /^https?:\/\//i.test(image)) data.photoUrl = image;
   return data;
 }

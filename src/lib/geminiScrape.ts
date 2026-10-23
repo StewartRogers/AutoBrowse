@@ -245,7 +245,8 @@ async function callGemini(contents: string, signal?: AbortSignal): Promise<{ ok:
       body: JSON.stringify({ contents }),
       signal: controller.signal,
     });
-    const j = await r.json();
+    // A gateway/platform error page is HTML, not JSON; report the status instead of a SyntaxError.
+    const j = await r.json().catch(() => ({ ok: false, error: `Gemini request failed (HTTP ${r.status}).` }));
     if (!j?.ok) return { ok: false, error: friendlyError(j?.error ?? 'Gemini request failed.') };
     return { ok: true, text: j.text ?? '' };
   } catch (err: unknown) {

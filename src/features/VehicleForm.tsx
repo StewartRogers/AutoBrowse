@@ -59,6 +59,28 @@ interface Props {
   onClose: () => void;
 }
 
+// Merges scraped/AI values over what the user already has. Zero/empty values are
+// scraper defaults (no trade-in, tax rate, down payment or fees found), so they
+// never overwrite user-entered data.
+function fillFound<T extends object>(prev: T, found: Partial<T> | undefined): T {
+  if (!found) return prev;
+  const out = { ...prev } as Record<string, unknown>;
+  for (const [k, val] of Object.entries(found)) {
+    if (val === undefined || val === null || val === '' || val === 0) continue;
+    if (Array.isArray(val) && !val.length) continue;
+    out[k] = val;
+  }
+  return out as T;
+}
+
+function fillPricing(prev: Vehicle['pricing'], found: Partial<Vehicle['pricing']> | undefined): Vehicle['pricing'] {
+  const out = fillFound(prev, found);
+  // The discount is backed out of the listing's msrp/selling pair, so it travels
+  // with the msrp even when it is 0 (otherwise an old discount would stick).
+  if (found?.msrp) out.discount = found.discount ?? 0;
+  return out;
+}
+
 const PT_OPTIONS = [
   { value: 'gas' as Powertrain, label: 'Gas' },
   { value: 'hybrid' as Powertrain, label: 'Hybrid' },
@@ -265,12 +287,14 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       setAiError(result.error);
       return;
     }
-    const { specs, pricing, features, ...rest } = result.data;
+    const { specs, pricing, features, finance, lease, ...rest } = result.data;
     setV(prev => ({
       ...prev,
       ...rest,
       specs: specs ? { ...prev.specs, ...specs } : prev.specs,
-      pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
+      pricing: fillPricing(prev.pricing, pricing),
+      finance: fillFound(prev.finance, finance),
+      lease: fillFound(prev.lease, lease),
       features: features ? { ...(prev.features ?? {}), ...features } : prev.features,
     }));
     const identityKeys = ['make', 'model', 'year', 'trim', 'powertrain', 'bodyStyle', 'color', 'dealer'];
@@ -330,7 +354,7 @@ export default function VehicleForm({ initial, onSave, onClose }: Props) {
       ...prev,
       ...rest,
       specs: specs ? { ...prev.specs, ...specs } : prev.specs,
-      pricing: pricing ? { ...prev.pricing, ...pricing } : prev.pricing,
+      pricing: fillPricing(prev.pricing, pricing),
     }));
     setHtmlStatus('idle');
   }

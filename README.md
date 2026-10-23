@@ -11,11 +11,11 @@ A personal car-shopping workbook. AutoBrowse is a **local, private tool for your
 - **AI fill** — paste a URL or enter year/make/model/trim and Gemini fills in vehicle specs automatically.
 - **Photo attachments** — attach images and notes to each vehicle.
 
-Data is stored in a libSQL database — a local SQLite file (`garage.db`) by default, so it runs fully offline and nothing leaves your machine except optional AI lookups to the Gemini API. For deployment you can point it at a hosted [Turso](https://turso.tech) database via `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`.
+Data is stored in a libSQL database — a local SQLite file (`garage.db`) by default, so your data stays on your machine. The only outbound requests are the optional lookups you trigger (Gemini AI fill, fetching a listing page for the HTML fallback, and the Wikipedia photo fallback) plus Google Fonts in the browser. For deployment you can point it at a hosted [Turso](https://turso.tech) database via `TURSO_DATABASE_URL` + `TURSO_AUTH_TOKEN`.
 
 ## Prerequisites
 
-- Node.js 22 (see `.nvmrc`)
+- Node.js 22 or 24 (22 is pinned in `.nvmrc`)
 - A [Gemini API key](https://aistudio.google.com/) (free; required only for AI fill features)
 
 ## Installation

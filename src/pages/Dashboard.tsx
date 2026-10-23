@@ -47,12 +47,14 @@ export default function Dashboard() {
   const { prices, priceRangeMax, lowestPayment, topMatch, paymentLeaders, ownLeaders, matrixLeaders, recentLeaders } = useMemo(() => {
     const prices = active.map(v => sellingPriceOf(v.pricing)).filter(Boolean);
     const priceRangeMax = prices.length ? money(Math.max(...prices)) : '';
-    const paymentsByVehicle = active.map(v => ({ v, mo: financeCalc(v).monthly })).sort((a, b) => a.mo - b.mo);
+    // Vehicles with no price entered yet would otherwise "win" the cost rankings.
+    const priced = active.filter(v => sellingPriceOf(v.pricing) > 0);
+    const paymentsByVehicle = priced.map(v => ({ v, mo: financeCalc(v).monthly })).sort((a, b) => a.mo - b.mo);
     const lowestPayment = paymentsByVehicle[0];
     const matrixResults = matrixScores(active, matrix);
     const topMatch = matrixResults[0];
-    const paymentLeaders = [...active].sort((a, b) => financeCalc(a).monthly - financeCalc(b).monthly).slice(0, 4);
-    const ownLeaders = [...active].sort((a, b) => ownershipCalc(a).y5 - ownershipCalc(b).y5).slice(0, 4);
+    const paymentLeaders = [...priced].sort((a, b) => financeCalc(a).monthly - financeCalc(b).monthly).slice(0, 4);
+    const ownLeaders = [...priced].sort((a, b) => ownershipCalc(a).y5 - ownershipCalc(b).y5).slice(0, 4);
     const matrixLeaders = matrixResults.slice(0, 4);
     const recentLeaders = [...active].sort((a, b) => b.viewedAt - a.viewedAt).slice(0, 4);
     return { prices, priceRangeMax, lowestPayment, matrixResults, topMatch, paymentLeaders, ownLeaders, matrixLeaders, recentLeaders };

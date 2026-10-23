@@ -31,7 +31,15 @@ export default function Matrix() {
 
   const normalize = () => {
     if (!totalWeight) return;
-    setMatrix(matrix.map(f => ({ ...f, weight: Math.round((f.weight / totalWeight) * 100) })));
+    // Largest-remainder rounding so the weights always sum to exactly 100
+    // (plain rounding turns 10/10/10 into 33/33/33 = 99 and never balances).
+    const exact = matrix.map(f => ((f.weight || 0) / totalWeight) * 100);
+    const weights = exact.map(Math.floor);
+    let short = 100 - weights.reduce((a, w) => a + w, 0);
+    exact.map((x, i) => ({ i, rem: x - Math.floor(x) }))
+      .sort((a, b) => b.rem - a.rem)
+      .forEach(({ i }) => { if (short > 0) { weights[i] += 1; short -= 1; } });
+    setMatrix(matrix.map((f, i) => ({ ...f, weight: weights[i] })));
   };
 
   const unusedMetrics = Object.keys(MATRIX_METRICS).filter(k => !matrix.find(f => f.metric === k));

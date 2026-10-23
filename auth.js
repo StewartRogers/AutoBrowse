@@ -7,8 +7,10 @@
 //   AUTH_PASSWORD       superuser password (plaintext env var), OR
 //   AUTH_PASSWORD_HASH  scrypt hash "salt:hash" (preferred — see scripts/hash-password.mjs)
 //   AUTH_SECRET         HMAC key for signing session cookies (optional; falls back to
-//                       the password hash/password so sessions are still signed)
-//   AUTH_SESSION_DAYS   session lifetime in days (default 30)
+//                       the password hash, or a scrypt-derived key from the plaintext
+//                       password, so sessions are still signed). Rotate it to revoke
+//                       every outstanding session.
+//   AUTH_SESSION_DAYS   session lifetime in days (default 30, clamped to 1–365)
 //
 // The gate is ENABLED when a password is configured. With no password set, local
 // dev stays open by default; production fails closed unless AUTH_DISABLED=true is
@@ -23,8 +25,13 @@ import crypto from 'node:crypto';
 const USERNAME = process.env.AUTH_USERNAME || 'admin';
 const PASSWORD = process.env.AUTH_PASSWORD || '';
 const PASSWORD_HASH = process.env.AUTH_PASSWORD_HASH || ''; // "saltHex:hashHex"
-const SECRET = process.env.AUTH_SECRET || PASSWORD_HASH || PASSWORD;
-const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS) || 30;
+// Never use the plaintext password itself as the HMAC key: anyone holding one valid
+// cookie could then brute-force the password offline at HMAC speed. scrypt makes
+// each guess expensive (computed once at startup).
+const SECRET = process.env.AUTH_SECRET || PASSWORD_HASH
+  || (PASSWORD ? crypto.scryptSync(PASSWORD, 'autobrowse-session-key', 32) : '');
+// Clamp so Infinity/negative values can't produce tokens that never verify.
+const SESSION_DAYS = Math.min(Math.max(Number(process.env.AUTH_SESSION_DAYS) || 30, 1), 365);
 const COOKIE = 'ab_session';
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 const IS_PRODUCTION = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
@@ -93,15 +100,16 @@ function verifyToken(token) {
 
 // ─── Cookies ──────────────────────────────────────────────────────────────────
 
-function parseCookies(req) {
+// Returns the raw value of one cookie. No decodeURIComponent: the session token is
+// base64url, and decoding an unrelated cookie with a stray '%' would throw and take
+// down every request on the domain.
+function getCookie(req, name) {
   const header = req.headers.cookie || '';
-  const out = {};
   for (const part of header.split(';')) {
     const i = part.indexOf('=');
-    if (i === -1) continue;
-    out[part.slice(0, i).trim()] = decodeURIComponent(part.slice(i + 1).trim());
+    if (i !== -1 && part.slice(0, i).trim() === name) return part.slice(i + 1).trim();
   }
-  return out;
+  return undefined;
 }
 
 // Secure flag only over HTTPS, so a local http dev session still works if someone
@@ -130,11 +138,17 @@ function clearSessionCookie(req, res) {
 
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILS = 10;
+const MAX_TRACKED = 5000;
 const fails = new Map(); // ip -> { count, first }
+
+// X-Forwarded-For is client-controlled unless a proxy overwrites it. Vercel does;
+// a bare `node server.js` does not, so there the socket address is used instead
+// (otherwise rotating the header would give unlimited guesses).
+const TRUST_FORWARDED = process.env.VERCEL === '1';
 
 function clientIp(req) {
   const fwd = req.headers['x-forwarded-for'];
-  if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  if (TRUST_FORWARDED && typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
   return req.socket?.remoteAddress || 'unknown';
 }
 
@@ -150,6 +164,11 @@ function isRateLimited(ip) {
 
 function recordFail(ip) {
   const now = Date.now();
+  // Keep memory bounded: drop expired entries, then the oldest if still too many.
+  if (fails.size >= MAX_TRACKED) {
+    for (const [key, rec] of fails) if (now - rec.first > WINDOW_MS) fails.delete(key);
+    while (fails.size >= MAX_TRACKED) fails.delete(fails.keys().next().value);
+  }
   const rec = fails.get(ip);
   if (!rec || now - rec.first > WINDOW_MS) fails.set(ip, { count: 1, first: now });
   else rec.count += 1;
@@ -163,8 +182,7 @@ export function requireAuth(req, res, next) {
     return res.status(503).json({ ok: false, error: 'Authentication is not configured on this deployment.' });
   }
   if (!authEnabled) return next();
-  const cookies = parseCookies(req);
-  if (verifyToken(cookies[COOKIE])) return next();
+  if (verifyToken(getCookie(req, COOKIE))) return next();
   return res.status(401).json({ ok: false, error: 'Unauthorized.' });
 }
 
@@ -173,7 +191,6 @@ export function requireAuth(req, res, next) {
 export function installAuthRoutes(app) {
   // GET /api/auth — session/config status used by the frontend gate.
   app.get('/api/auth', (req, res) => {
-    const cookies = parseCookies(req);
     if (authMisconfigured) {
       return res.status(503).json({
         ok: false,
@@ -182,7 +199,7 @@ export function installAuthRoutes(app) {
         error: 'Authentication is not configured on this deployment.',
       });
     }
-    res.json({ ok: true, required: authEnabled, authed: !authEnabled || verifyToken(cookies[COOKIE]) });
+    res.json({ ok: true, required: authEnabled, authed: !authEnabled || verifyToken(getCookie(req, COOKIE)) });
   });
 
   // POST /api/login — { username?, password } → sets the session cookie.
@@ -199,7 +216,11 @@ export function installAuthRoutes(app) {
 
     const username = String(req.body?.username ?? USERNAME);
     const password = String(req.body?.password ?? '');
-    const ok = safeEqual(username, USERNAME) && verifyPassword(password);
+    // Evaluate both checks every time: short-circuiting would skip the slow scrypt
+    // on a wrong username and so reveal, via timing, when the username is right.
+    const userOk = safeEqual(username, USERNAME);
+    const passOk = verifyPassword(password);
+    const ok = userOk && passOk;
     if (!ok) {
       recordFail(ip);
       return res.status(401).json({ ok: false, error: 'Invalid username or password.' });

@@ -9,9 +9,10 @@ import { fileURLToPath } from 'url';
 import { GoogleGenAI } from '@google/genai';
 import { db, isLocalFile, initSchema } from './db.js';
 import { installAuthRoutes, requireAuth } from './auth.js';
-import { MAX_HTML_BYTES, TooLargeError, fetchPublicHtml, readBodyCapped, parseListingHtml } from './scrape.js';
+import { MAX_HTML_BYTES, ScrapeError, TooLargeError, fetchPublicHtml, readBodyCapped, parseListingHtml } from './scrape.js';
 
 const app = express();
+app.disable('x-powered-by');
 const PORT = process.env.PORT || 3000;
 
 // Lightweight tagged logging for the AI/scrape endpoints. These calls reach out to
@@ -23,7 +24,15 @@ function logTag(tag, msg) {
 const since = (t0) => `${Date.now() - t0}ms`;
 
 const errorMessage = (err) => (err instanceof Error ? err.message : String(err));
-const sendError = (res, err, status = 500) => res.status(status).json({ ok: false, error: errorMessage(err) });
+// Unexpected failures (libsql/Turso, sockets) are logged here and reported to the
+// client generically, so internals like hostnames, ports and SQL never leak out.
+const sendError = (res, err, status = 500) => {
+  console.error(`[error] ${errorMessage(err)}`);
+  res.status(status).json({ ok: false, error: 'Internal server error.' });
+};
+
+const isPlainObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isValidId = (id) => typeof id === 'string' && id.length > 0 && id.length <= 128;
 
 // Body parsing that works both as a standalone server and as a Vercel function.
 // Vercel's Node runtime may have already parsed the JSON body (consuming the
@@ -38,7 +47,13 @@ app.use((req, res, next) => {
 });
 
 const schemaReady = initSchema();
-console.log(`Database: ${process.env.TURSO_DATABASE_URL || 'file:garage.db'}${isLocalFile ? ' (local)' : ' (Turso)'}`);
+// Log only the host for Turso: the URL may carry credentials (e.g. ?authToken=).
+const dbLabel = () => {
+  const url = process.env.TURSO_DATABASE_URL || 'file:garage.db';
+  if (isLocalFile) return `${url} (local)`;
+  try { return `${new URL(url).host} (Turso)`; } catch { return '(Turso)'; }
+};
+console.log(`Database: ${dbLabel()}`);
 
 // Ensure the schema exists before any request touches the DB.
 app.use(async (req, res, next) => {
@@ -77,7 +92,8 @@ app.get('/api/vehicles', async (req, res) => {
 app.post('/api/vehicles', async (req, res) => {
   try {
     const v = req.body;
-    if (!v?.id) return res.status(400).json({ ok: false, error: 'Missing id.' });
+    if (!isPlainObject(v)) return res.status(400).json({ ok: false, error: 'Body must be a vehicle object.' });
+    if (!isValidId(v.id)) return res.status(400).json({ ok: false, error: 'Missing or invalid id.' });
     await db.execute({
       sql: UPSERT_VEHICLE,
       args: [v.id, JSON.stringify(v)],
@@ -91,6 +107,9 @@ app.post('/api/vehicles', async (req, res) => {
 // PUT /api/vehicles/:id — replace a vehicle (body = full Vehicle object)
 app.put('/api/vehicles/:id', async (req, res) => {
   try {
+    // An empty or non-JSON body would otherwise be saved as just {id}, wiping the vehicle.
+    if (!isPlainObject(req.body)) return res.status(400).json({ ok: false, error: 'Body must be a vehicle object.' });
+    if (!isValidId(req.params.id)) return res.status(400).json({ ok: false, error: 'Invalid id.' });
     const v = { ...req.body, id: req.params.id };
     await db.execute({
       sql: UPSERT_VEHICLE,
@@ -152,6 +171,8 @@ const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.1-flash-lite';
 // under the client's 30s abort (geminiScrape.ts) so the server can return a clean
 // 504 JSON error before the browser aborts on its own.
 const GEMINI_TIMEOUT_MS = 28_000;
+// Real prompts are a few KB; cap them so a caller can't burn quota with huge bodies.
+const MAX_PROMPT_CHARS = 100_000;
 
 // POST /api/gemini — body { contents: string } → { ok, text }
 app.post('/api/gemini', async (req, res) => {
@@ -163,6 +184,10 @@ app.post('/api/gemini', async (req, res) => {
     if (typeof contents !== 'string' || !contents.trim()) {
       logTag('gemini', 'rejected: missing prompt contents');
       return res.status(400).json({ ok: false, error: 'Missing prompt contents.' });
+    }
+    if (contents.length > MAX_PROMPT_CHARS) {
+      logTag('gemini', `rejected: prompt too long (${contents.length} chars)`);
+      return res.status(413).json({ ok: false, error: 'Prompt is too long.' });
     }
     if (!GEMINI_API_KEY) {
       logTag('gemini', 'rejected: GEMINI_API_KEY not configured on server');
@@ -222,16 +247,15 @@ app.get('/api/scrape-html', async (req, res) => {
       return res.status(502).json({ ok: false, error: `Response too large (${(contentLength / 1024 / 1024).toFixed(1)} MB).` });
     }
 
-    let html;
-    try {
-      html = await readBodyCapped(response, MAX_HTML_BYTES);
-    } catch (err) {
-      if (err instanceof TooLargeError) return sendError(res, err, 502);
-      throw err;
-    }
+    const html = await readBodyCapped(response, MAX_HTML_BYTES);
     return res.json({ ok: true, data: parseListingHtml(html) });
   } catch (err) {
-    return sendError(res, err);
+    // ScrapeError messages (bad URL, private host, too large) are meant for the user.
+    // Raw socket errors (ECONNREFUSED host:port, ENOTFOUND) are not echoed back.
+    if (err instanceof ScrapeError) return res.status(err instanceof TooLargeError ? 502 : 400).json({ ok: false, error: err.message });
+    if (err?.name === 'TimeoutError') return res.status(504).json({ ok: false, error: 'The listing page took too long to respond.' });
+    logTag('scrape-html', `✗ ${errorMessage(err)}`);
+    return res.status(502).json({ ok: false, error: 'Could not fetch that page.' });
   }
 });
 
@@ -305,6 +329,15 @@ app.get('/api/wiki-photo', async (req, res) => {
 
 app.get('/', (req, res) => {
   res.json({ message: 'AutoBrowse API' });
+});
+
+// Final error handler: malformed JSON, oversize bodies and anything thrown outside a
+// route's try/catch get a JSON reply instead of Express's HTML page (which includes a
+// stack trace outside production).
+app.use((err, req, res, next) => {
+  const status = Number(err?.status || err?.statusCode) || 500;
+  if (status >= 500) return sendError(res, err, status);
+  res.status(status).json({ ok: false, error: status === 413 ? 'Request body is too large.' : 'Bad request.' });
 });
 
 // Start a listener only when run directly (`node server.js`). When this module is

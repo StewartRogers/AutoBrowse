@@ -6,7 +6,7 @@ import zlib from 'node:zlib';
 import dns from 'node:dns/promises';
 import {
   isPrivateIPv4, isPrivateIPv6, validatePublicHttpUrl, fetchPublicHtml,
-  readBodyCapped, TooLargeError, parseListingHtml,
+  readBodyCapped, TooLargeError, ScrapeError, parseListingHtml,
 } from '../../scrape.js';
 
 vi.mock('node:dns/promises', () => ({ default: { lookup: vi.fn() } }));
@@ -40,7 +40,7 @@ describe('validatePublicHttpUrl', () => {
     'http://[::ffff:a9fe:a9fe]/', 'http://0x7f.1/', 'http://2130706433/', 'http://localhost/',
     'http://a.localhost/', 'file:///etc/passwd', 'ftp://example.com/', 'http://user:pw@example.com/', 'not a url',
   ])('rejects %s', url => {
-    expect(() => validatePublicHttpUrl(url)).toThrow();
+    expect(() => validatePublicHttpUrl(url)).toThrow(ScrapeError);
   });
   it('accepts a public hostname (resolved later, at connect time)', () => {
     expect(validatePublicHttpUrl('https://example.com/car').hostname).toBe('example.com');
@@ -103,6 +103,11 @@ describe('parseListingHtml', () => {
   it('falls back to <title> and name= tags', () => {
     const html = `<TITLE>2023 Toyota RAV4 SUV | Lot</TITLE><meta name='og:image' content='https://x.example/r.jpg'>`;
     expect(parseListingHtml(html)).toMatchObject({ year: 2023, make: 'Toyota', model: 'RAV4', trim: 'SUV', bodyStyle: 'SUV', photoUrl: 'https://x.example/r.jpg' });
+  });
+  it('drops a non-http(s) og:image', () => {
+    for (const bad of ['javascript:alert(1)', 'data:text/html,x', '/relative.jpg']) {
+      expect(parseListingHtml(`<meta property="og:image" content="${bad}">`).photoUrl).toBeUndefined();
+    }
   });
   it('stays fast on adversarial HTML (no catastrophic backtracking)', () => {
     const inputs = [

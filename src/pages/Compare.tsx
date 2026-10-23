@@ -32,7 +32,9 @@ type Section = typeof SECTIONS[number];
 // ── Cell best-in-row highlight logic ─────────────────────────────────────────
 function bestIndices(values: (number | undefined)[], better?: 'high' | 'low'): number[] {
   if (!better) return [];
-  const nums = values.map((v, i) => ({ v, i })).filter(x => x.v !== undefined && !isNaN(x.v as number));
+  // For lower-is-better rows (price, payment, ...) 0 means "not entered", not a win.
+  const nums = values.map((v, i) => ({ v, i }))
+    .filter(x => x.v !== undefined && !isNaN(x.v as number) && (better === 'high' || (x.v as number) > 0));
   if (nums.length < 2) return [];
   const best = better === 'high'
     ? Math.max(...nums.map(x => x.v as number))
