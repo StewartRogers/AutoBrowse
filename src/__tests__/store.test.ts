@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { useStore } from '../store/useStore';
+import { useStore, flushPendingSaves } from '../store/useStore';
 import { blankVehicle, DEFAULT_MATRIX } from '../lib/data';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -24,7 +24,10 @@ beforeEach(() => {
   mockFetch();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // Drain queued/debounced writes so they can't hit the next test's fetch mock.
+  vi.useRealTimers();
+  await flushPendingSaves();
   vi.unstubAllGlobals();
 });
 
@@ -299,5 +302,95 @@ describe('init', () => {
     expect(state.hydrated).toBe(true);
     expect(state.vehicles).toHaveLength(0);
     expect(state.persistenceError).toBe('Network error');
+  });
+});
+
+// ─── write queue (ordering, debounce, delete) ────────────────────────────────
+
+describe('write queue', () => {
+  type Call = { url: string; method: string; body?: unknown; resolve: () => void };
+
+  // fetch mock whose responses are released by hand, to simulate slow requests.
+  function controlledFetch() {
+    const calls: Call[] = [];
+    vi.stubGlobal('fetch', vi.fn().mockImplementation((url: string, init?: RequestInit) =>
+      new Promise(resolve => {
+        calls.push({
+          url,
+          method: init?.method ?? 'GET',
+          body: init?.body ? JSON.parse(String(init.body)) : undefined,
+          resolve: () => resolve({ ok: true, json: async () => ({ ok: true }) }),
+        });
+      })));
+    return calls;
+  }
+  const tick = () => new Promise(r => setTimeout(r, 0));
+
+  it('coalesces rapid edits into one PUT carrying the latest data', async () => {
+    const id = useStore.getState().addVehicle({ notes: '' });
+    await flushPendingSaves();
+    vi.useFakeTimers();
+    mockFetch();
+    for (const notes of ['a', 'ab', 'abc']) useStore.getState().updateVehicle(id, { notes });
+    expect(fetch).not.toHaveBeenCalled(); // still inside the debounce window
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+    await flushPendingSaves();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const [url, init] = vi.mocked(fetch).mock.calls[0];
+    expect(url).toBe(`/api/vehicles/${id}`);
+    expect(JSON.parse(String(init?.body)).notes).toBe('abc');
+  });
+
+  it('waits for an in-flight save before sending the next one', async () => {
+    const calls = controlledFetch();
+    const id = useStore.getState().addVehicle({ notes: '' });
+    await tick();
+    calls[0].resolve(); // POST done
+    useStore.getState().updateVehicle(id, { notes: 'first' });
+    void flushPendingSaves();
+    await tick();
+    expect(calls).toHaveLength(2); // first PUT in flight
+    useStore.getState().updateVehicle(id, { notes: 'second' });
+    void flushPendingSaves();
+    await tick();
+    expect(calls).toHaveLength(2); // second PUT held back until the first settles
+    calls[1].resolve();
+    await tick();
+    expect(calls).toHaveLength(3);
+    expect((calls[2].body as { notes: string }).notes).toBe('second');
+    calls[2].resolve();
+  });
+
+  it('a delete drops waiting saves and runs after the in-flight one (no resurrection)', async () => {
+    const calls = controlledFetch();
+    const id = useStore.getState().addVehicle({});
+    await tick();
+    calls[0].resolve();
+    useStore.getState().updateVehicle(id, { notes: 'in flight' });
+    void flushPendingSaves();
+    await tick();
+    useStore.getState().updateVehicle(id, { notes: 'still waiting' }); // debounced, never sent
+    useStore.getState().removeVehicle(id);
+    await tick();
+    expect(calls.map(c => c.method)).toEqual(['POST', 'PUT']); // DELETE queued behind the PUT
+    calls[1].resolve();
+    await tick();
+    expect(calls.map(c => c.method)).toEqual(['POST', 'PUT', 'DELETE']);
+    calls[2].resolve();
+    await flushPendingSaves();
+    expect(calls).toHaveLength(3); // the waiting save was dropped
+  });
+
+  it('debounces matrix saves to the latest value', async () => {
+    vi.useFakeTimers();
+    mockFetch();
+    useStore.getState().setMatrix([{ metric: 'price', weight: 10 }]);
+    useStore.getState().setMatrix([{ metric: 'price', weight: 20 }]);
+    vi.advanceTimersByTime(300);
+    vi.useRealTimers();
+    await flushPendingSaves();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body))).toEqual([{ metric: 'price', weight: 20 }]);
   });
 });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
-import { useStore } from '../store/useStore';
+import { useStore, flushPendingSaves } from '../store/useStore';
 import { fetchAuthStatus, logout } from '../lib/authApi';
 import Icon from '../components/Icon';
 import styles from './AppShell.module.css';
@@ -32,6 +32,7 @@ export default function AppShell({ children, onAddVehicle }: Props) {
   }, []);
 
   const handleLogout = async () => {
+    await flushPendingSaves(); // send queued edits while the session is still valid
     await logout();
     window.location.reload(); // re-runs the gate → back to the login screen
   };

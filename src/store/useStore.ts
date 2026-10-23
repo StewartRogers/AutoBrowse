@@ -1,6 +1,7 @@
 // useStore.ts — Zustand store backed by the local Express/SQLite API.
-// State is loaded from GET /api/vehicles on init() and written through
-// to the API on every mutation. localStorage is no longer used.
+// State is loaded from GET /api/vehicles on init() and written through to the
+// API on every mutation via an ordered, debounced write queue (see below).
+// localStorage is no longer used.
 
 import { create } from 'zustand';
 import {
@@ -67,12 +68,103 @@ function patchVehicle(vehicles: Vehicle[], id: string, fn: (v: Vehicle) => Vehic
   return { vehicles: next, updated };
 }
 
-// Fire-and-forget write-through: mutations are optimistic, so a failed API call
-// only surfaces as a persistenceError banner (see AppShell).
-function persist(request: Promise<void>, action: string): void {
-  void request.catch(err => {
-    console.error(`AutoBrowse: failed to ${action} —`, err);
-    useStore.setState({ persistenceError: persistFailure(err) });
+// ─── Write queue ─────────────────────────────────────────────────────────────
+// Mutations are optimistic: local state changes immediately and the API write
+// runs in the background; a failure only surfaces as a persistenceError banner
+// (see AppShell).
+//
+// Every vehicle (and the matrix) has its own lane, and a lane runs one request
+// at a time in the order they were made. Without this, every keystroke fired its
+// own full-object PUT, and on a slow or serverless backend an earlier PUT could
+// land last (saving stale data) or land after a DELETE (resurrecting the vehicle,
+// since PUT is an upsert).
+//
+// Saves are debounced and coalesced: only the latest snapshot is sent once edits
+// pause. Creates and deletes are queued immediately; a delete also drops any save
+// still waiting for that vehicle.
+
+const SAVE_DEBOUNCE_MS = 300;
+
+type Job = { run: () => Promise<void>; action: string };
+
+interface Lane {
+  tail: Promise<void>;                         // settles once every queued request has
+  pending: Job | null;                         // latest debounced save, not yet queued
+  timer: ReturnType<typeof setTimeout> | null; // debounce timer for `pending`
+}
+
+const lanes = new Map<string, Lane>();
+
+function getLane(key: string): Lane {
+  let lane = lanes.get(key);
+  if (!lane) {
+    lane = { tail: Promise.resolve(), pending: null, timer: null };
+    lanes.set(key, lane);
+  }
+  return lane;
+}
+
+function reportFailure(err: unknown, action: string): void {
+  console.error(`AutoBrowse: failed to ${action} —`, err);
+  useStore.setState({ persistenceError: persistFailure(err) });
+}
+
+// Starts `job` once every earlier request in the lane has settled.
+function enqueue(key: string, job: Job): void {
+  const lane = getLane(key);
+  lane.tail = lane.tail.then(job.run).catch(err => reportFailure(err, job.action));
+}
+
+// Moves the lane's waiting save (if any) into the queue now.
+function flushLane(key: string): void {
+  const lane = lanes.get(key);
+  if (!lane) return;
+  if (lane.timer) clearTimeout(lane.timer);
+  lane.timer = null;
+  const job = lane.pending;
+  lane.pending = null;
+  if (job) enqueue(key, job);
+}
+
+function scheduleSave(key: string, job: Job): void {
+  const lane = getLane(key);
+  lane.pending = job; // a newer snapshot replaces the waiting one
+  if (lane.timer) clearTimeout(lane.timer);
+  lane.timer = setTimeout(() => flushLane(key), SAVE_DEBOUNCE_MS);
+}
+
+function dropPending(key: string): void {
+  const lane = lanes.get(key);
+  if (!lane) return;
+  if (lane.timer) clearTimeout(lane.timer);
+  lane.timer = null;
+  lane.pending = null;
+}
+
+const vehicleKey = (id: string) => `vehicle:${id}`;
+const MATRIX_KEY = 'matrix';
+
+const queueCreate = (v: Vehicle, action = 'create vehicle') =>
+  enqueue(vehicleKey(v.id), { run: () => api.createVehicle(v), action });
+const queueSave = (v: Vehicle) =>
+  scheduleSave(vehicleKey(v.id), { run: () => api.saveVehicle(v), action: 'save vehicle' });
+const queueDelete = (id: string) => {
+  dropPending(vehicleKey(id));
+  enqueue(vehicleKey(id), { run: () => api.deleteVehicle(id), action: 'delete vehicle' });
+};
+
+// Sends every waiting save now and resolves once all queued writes have settled.
+// Call before anything that ends the session (sign-out, reload).
+export function flushPendingSaves(): Promise<void> {
+  for (const key of lanes.keys()) flushLane(key);
+  return Promise.all([...lanes.values()].map(lane => lane.tail)).then(() => undefined);
+}
+
+// Don't lose the last ~300ms of edits when the tab is hidden or closed.
+if (typeof window !== 'undefined') {
+  window.addEventListener('pagehide', () => { void flushPendingSaves(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') void flushPendingSaves();
   });
 }
 
@@ -153,7 +245,7 @@ export const useStore = create<AppState>()((set) => ({
       viewedAt: Date.now(),
     };
     set(s => ({ vehicles: [nv, ...s.vehicles] }));
-    persist(api.createVehicle(nv), 'create vehicle');
+    queueCreate(nv);
     return nv.id;
   },
 
@@ -164,7 +256,7 @@ export const useStore = create<AppState>()((set) => ({
       updated = r.updated;
       return { vehicles: r.vehicles };
     });
-    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
+    if (updated) queueSave(updated);
   },
 
   replaceVehicle(id, full) {
@@ -172,7 +264,7 @@ export const useStore = create<AppState>()((set) => ({
     set(s => ({
       vehicles: s.vehicles.map(existing => existing.id === id ? v : existing),
     }));
-    persist(api.saveVehicle(v), 'save vehicle');
+    queueSave(v);
   },
 
   removeVehicle(id) {
@@ -180,7 +272,7 @@ export const useStore = create<AppState>()((set) => ({
       vehicles: s.vehicles.filter(v => v.id !== id),
       compareIds: s.compareIds.filter(cid => cid !== id),
     }));
-    persist(api.deleteVehicle(id), 'delete vehicle');
+    queueDelete(id);
   },
 
   duplicateVehicle(id) {
@@ -201,7 +293,7 @@ export const useStore = create<AppState>()((set) => ({
       arr.splice(idx + 1, 0, copy);
       return { ...s, vehicles: arr };
     });
-    if (copy) persist(api.createVehicle(copy), 'duplicate vehicle');
+    if (copy) queueCreate(copy, 'duplicate vehicle');
     return newId;
   },
 
@@ -216,7 +308,7 @@ export const useStore = create<AppState>()((set) => ({
         compareIds: wasActive ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
+    if (updated) queueSave(updated);
   },
 
   setExcluded(id, excluded, reason = '') {
@@ -234,7 +326,7 @@ export const useStore = create<AppState>()((set) => ({
         compareIds: excluded ? s.compareIds.filter(cid => cid !== id) : s.compareIds,
       };
     });
-    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
+    if (updated) queueSave(updated);
   },
 
   touchViewed(id) {
@@ -244,7 +336,7 @@ export const useStore = create<AppState>()((set) => ({
       updated = r.updated;
       return { vehicles: r.vehicles };
     });
-    if (updated) persist(api.saveVehicle(updated), 'save vehicle');
+    if (updated) queueSave(updated);
   },
 
   setCompareIds(ids) {
@@ -261,7 +353,7 @@ export const useStore = create<AppState>()((set) => ({
 
   setMatrix(matrix) {
     set({ matrix });
-    persist(api.saveMatrix(matrix), 'save matrix');
+    scheduleSave(MATRIX_KEY, { run: () => api.saveMatrix(matrix), action: 'save matrix' });
   },
 
   clearPersistenceError() {
